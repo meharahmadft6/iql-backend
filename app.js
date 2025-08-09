@@ -26,6 +26,7 @@ app.use(
     origin: [
       "http://localhost:3001",
       "https://infinityquotientlearning.vercel.app",
+      "https://infinityquotientlearning.com/",
     ],
     credentials: true,
   })
