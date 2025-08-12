@@ -1,30 +1,41 @@
 const nodemailer = require("nodemailer");
 const pug = require("pug");
-const htmlToText = require("html-to-text");
+const { htmlToText } = require("html-to-text");
+const path = require("path");
 
-module.exports = class Email {
-  constructor(user, url) {
+class Email {
+  constructor(user, resetUrl) {
     this.to = user.email;
     this.firstName = user.name.split(" ")[0];
-    this.url = url;
-    this.from = `TeacherOn Competitor <${process.env.EMAIL_FROM}>`;
+    this.resetUrl = resetUrl;
+    this.from = `Infinity Quotient Learning <${process.env.EMAIL_FROM}>`;
   }
 
+  // Create different transports for different environments
   newTransport() {
-    if (process.env.NODE_ENV === "production") {
-      // Sendgrid
+    // Development configuration
+    if (process.env.NODE_ENV === "development") {
       return nodemailer.createTransport({
-        service: "SendGrid",
+        host: process.env.EMAIL_HOST_DEV,
+        port: process.env.EMAIL_PORT_DEV,
         auth: {
-          user: process.env.SENDGRID_USERNAME,
-          pass: process.env.SENDGRID_PASSWORD,
+          user: "api", // Fixed username for Mailtrap API
+          pass: process.env.EMAIL_PASSWORD_DEV, // Your API token
         },
+        secure: false, // true for 465, false for other ports
+        tls: {
+          rejectUnauthorized: false, // For testing only, remove in production
+        },
+        debug: true,
+        logger: true,
       });
     }
 
+    // Production configuration (Amazon SES)
     return nodemailer.createTransport({
       host: process.env.EMAIL_HOST,
       port: process.env.EMAIL_PORT,
+      secure: process.env.EMAIL_PORT === "465", // true for 465, false for other ports
       auth: {
         user: process.env.EMAIL_USERNAME,
         pass: process.env.EMAIL_PASSWORD,
@@ -32,32 +43,73 @@ module.exports = class Email {
     });
   }
 
-  // Send the actual email
-  async send(template, subject) {
-    // 1) Render HTML based on a pug template
-    const html = pug.renderFile(`${__dirname}/../views/email/${template}.pug`, {
+  // Render email template
+  async renderTemplate(template, subject) {
+    const templatePath = path.join(
+      __dirname,
+      `../views/emails/${template}.pug`
+    );
+
+    return pug.renderFile(templatePath, {
       firstName: this.firstName,
-      url: this.url,
+      resetUrl: this.resetUrl,
       subject,
+      currentYear: new Date().getFullYear(),
     });
-
-    // 2) Define email options
-    const mailOptions = {
-      from: this.from,
-      to: this.to,
-      subject,
-      html,
-      text: htmlToText.fromString(html),
-    };
-
-    // 3) Create a transport and send email
-    await this.newTransport().sendMail(mailOptions);
   }
 
+  // Send email with template
+  // In sendEmail.js
+  async send(template, subject) {
+    try {
+      // 1) Render HTML
+      const html = await this.renderTemplate(template, subject);
+
+      // 2) Create mail options
+      const mailOptions = {
+        from: this.from,
+        to: this.to,
+        subject,
+        html,
+        text: htmlToText(html),
+      };
+
+      // 3) Create transport
+      const transporter = this.newTransport();
+
+      // 4) Verify connection first
+      await transporter.verify();
+
+      // 5) Send email
+      const info = await transporter.sendMail(mailOptions);
+
+      return info;
+    } catch (error) {
+      console.error("Full email sending error:", {
+        error: error.message,
+        stack: error.stack,
+        template,
+        subject,
+        to: this.to,
+        from: this.from,
+      });
+      throw new Error(`Email could not be sent: ${error.message}`);
+    }
+  }
+  // Specific email methods
   async sendPasswordReset() {
     await this.send(
       "passwordReset",
-      "Your password reset token (valid for only 10 minutes)"
+      "Your password reset link (expires in 10 minutes)"
     );
   }
-};
+
+  async sendPasswordChangeConfirmation() {
+    await this.send(
+      "passwordChanged",
+      "Your password has been successfully changed"
+    );
+  }
+}
+
+module.exports = Email;
