@@ -3,7 +3,7 @@ const ErrorResponse = require("../utils/errorResponse");
 const asyncHandler = require("../middleware/async");
 const Email = require("../utils/sendEmail");
 const crypto = require("crypto");
-
+const Teacher = require("../models/Teacher");
 // @desc    Register user
 // @route   POST /api/v1/auth/register
 // @access  Public
@@ -43,28 +43,28 @@ exports.register = asyncHandler(async (req, res, next) => {
 // @desc    Login user
 // @access  Public
 exports.login = asyncHandler(async (req, res, next) => {
-  console.log(req.body);
   const { email, password } = req.body;
-  // Validate email & password
+
   if (!email || !password) {
     return next(new ErrorResponse("Please provide an email and password", 400));
   }
 
-  // Check for user
   const user = await User.findOne({ email }).select("+password");
-
   if (!user) {
     return next(new ErrorResponse("Invalid credentials", 401));
   }
 
-  // Check if password matches
   const isMatch = await user.matchPassword(password);
-
   if (!isMatch) {
     return next(new ErrorResponse("Invalid credentials", 401));
   }
 
-  sendTokenResponse(user, 200, res);
+  let profileExists = false;
+  if (user.role === "teacher") {
+    profileExists = !!(await Teacher.exists({ user: user._id }));
+  }
+
+  sendTokenResponse(user, 200, res, profileExists);
 });
 
 // @desc    Log user out / clear cookie
@@ -251,7 +251,7 @@ exports.resetPassword = asyncHandler(async (req, res, next) => {
 });
 
 // Get token from model, create cookie and send response
-const sendTokenResponse = (user, statusCode, res) => {
+const sendTokenResponse = (user, statusCode, res, profileExists = null) => {
   // Create token
   const token = user.getSignedJwtToken();
 
@@ -273,6 +273,7 @@ const sendTokenResponse = (user, statusCode, res) => {
       success: true,
       token,
       role: user.role,
+      profileExists, // <-- Added here
       user: {
         id: user._id,
         name: user.name,
@@ -281,4 +282,3 @@ const sendTokenResponse = (user, statusCode, res) => {
       },
     });
 };
-
