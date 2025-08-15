@@ -372,15 +372,22 @@ exports.getAllTeacherProfiles = asyncHandler(async (req, res, next) => {
 exports.approveTeacher = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(req.body);
-    const { isApproved } = req.body;
+    console.log("Raw request body:", req.body);
+
+    // Handle both simple boolean and nested object structure
+    let isApproved = req.body.isApproved;
+    if (typeof isApproved === "object" && isApproved !== null) {
+      isApproved = isApproved.isApproved;
+    }
+    isApproved = Boolean(isApproved); // Ensure it's true/false
 
     // Find teacher by ID
     const teacher = await Teacher.findById(id);
     if (!teacher) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Teacher not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Teacher not found",
+      });
     }
 
     // Update approval status
