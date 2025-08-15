@@ -401,3 +401,69 @@ exports.approveTeacher = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+exports.getAllPublicTeacherProfiles = asyncHandler(async (req, res, next) => {
+  // Fetch only approved teachers with full details
+  const teachers = await Teacher.find({ isApproved: true }).populate({
+    path: "user",
+    select: "name email role createdAt", // Only select necessary fields
+  });
+
+  if (!teachers || teachers.length === 0) {
+    return next(new ErrorResponse("No teacher profiles found", 404));
+  }
+
+  // Add signed URLs for images/documents
+  const teachersWithUrls = await Promise.all(
+    teachers.map(async (teacher) => {
+      const teacherObj = teacher.toObject();
+
+      // Generate signed URLs for profile photo and ID proof
+      if (teacherObj.profilePhoto) {
+        teacherObj.profilePhotoUrl = await getSignedUrl(
+          teacherObj.profilePhoto
+        );
+      }
+      if (teacherObj.idProofFile) {
+        teacherObj.idProofUrl = await getSignedUrl(teacherObj.idProofFile);
+      }
+
+      return teacherObj;
+    })
+  );
+
+  res.status(200).json({
+    success: true,
+    count: teachersWithUrls.length,
+    data: teachersWithUrls,
+  });
+});
+exports.getPublicTeacherProfile = asyncHandler(async (req, res, next) => {
+  const teacher = await Teacher.findOne({
+    _id: req.params.id,
+    isApproved: true,
+  }).populate({
+    path: "user",
+    select: "name email role createdAt",
+  });
+
+  if (!teacher) {
+    return next(
+      new ErrorResponse(`Teacher not found with id of ${req.params.id}`, 404)
+    );
+  }
+
+  const teacherObj = teacher.toObject();
+
+  // Generate signed URLs
+  if (teacherObj.profilePhoto) {
+    teacherObj.profilePhotoUrl = await getSignedUrl(teacherObj.profilePhoto);
+  }
+  if (teacherObj.idProofFile) {
+    teacherObj.idProofUrl = await getSignedUrl(teacherObj.idProofFile);
+  }
+
+  res.status(200).json({
+    success: true,
+    data: teacherObj,
+  });
+});

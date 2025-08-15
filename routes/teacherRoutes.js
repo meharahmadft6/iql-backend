@@ -9,6 +9,8 @@ const {
   updateTeacherProfile,
   deleteTeacherProfile,
   getMyProfile,
+  getAllPublicTeacherProfiles,
+  getPublicTeacherProfile,
   approveTeacher,
 } = require("../controllers/teacherController");
 
@@ -17,6 +19,8 @@ const reviewRouter = require("../routes/reviews");
 
 // Re-route into other resource routers
 router.use("/:teacherId/reviews", reviewRouter);
+router.route("/public").get(getAllPublicTeacherProfiles);
+router.route("/public/:id").get(getPublicTeacherProfile);
 
 router.route("/").post(protect, authorize("teacher"), createTeacherProfile);
 
