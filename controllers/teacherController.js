@@ -96,6 +96,7 @@ exports.getTeacher = asyncHandler(async (req, res, next) => {
 // @access  Private (Teacher only)
 exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
   // Check if user is a teacher
+  console.log("Request body:", req.body);
   if (req.user.role !== "teacher") {
     return next(
       new ErrorResponse(
@@ -198,7 +199,7 @@ exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
     // Clean up any uploaded files if creation fails
     if (req.body.profilePhoto) await deleteFile(req.body.profilePhoto);
     if (req.body.idProofFile) await deleteFile(req.body.idProofFile);
-
+    console.log("Error creating teacher profile:", err);
     return next(
       new ErrorResponse(`Profile creation failed: ${err.message}`, 500)
     );
