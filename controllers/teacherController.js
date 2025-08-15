@@ -373,7 +373,9 @@ exports.approveTeacher = async (req, res) => {
   try {
     const { id } = req.params;
     console.log(req.body);
-    const { isApproved } = req.body;
+
+    // Extract the boolean value from the nested object if it exists
+    const isApproved = req.body.isApproved?.isApproved ?? req.body.isApproved;
 
     // Find teacher by ID
     const teacher = await Teacher.findById(id);
