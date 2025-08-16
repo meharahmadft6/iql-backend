@@ -209,6 +209,7 @@ exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/v1/teachers/:id
 // @access  Private (Teacher owner or admin)
 exports.updateTeacherProfile = asyncHandler(async (req, res, next) => {
+  // console.log("Update request body:", req.body);
   let teacher = await Teacher.findById(req.params.id);
 
   if (!teacher) {
@@ -217,7 +218,7 @@ exports.updateTeacherProfile = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Make sure user is teacher owner or admin
+  // Ensure only owner or admin can update
   if (teacher.user.toString() !== req.user.id && req.user.role !== "admin") {
     return next(
       new ErrorResponse(
@@ -227,52 +228,164 @@ exports.updateTeacherProfile = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Handle file uploads if they exist
-  if (req.files) {
-    // Delete old files from S3 if new ones are being uploaded
-    if (req.files.profilePhoto) {
-      await deleteFile(teacher.profilePhoto);
+  try {
+    // Parse array fields if they come as strings
+    if (typeof req.body.subjects === "string") {
+      req.body.subjects = JSON.parse(req.body.subjects);
+    }
+    if (typeof req.body.education === "string") {
+      req.body.education = JSON.parse(req.body.education);
+    }
+    if (typeof req.body.experience === "string") {
+      req.body.experience = JSON.parse(req.body.experience);
+    }
+
+    // Parse boolean fields
+    if (req.body.willingToTravel !== undefined)
+      req.body.willingToTravel = req.body.willingToTravel === "true";
+    if (req.body.availableForOnline !== undefined)
+      req.body.availableForOnline = req.body.availableForOnline === "true";
+    if (req.body.hasDigitalPen !== undefined)
+      req.body.hasDigitalPen = req.body.hasDigitalPen === "true";
+    if (req.body.helpsWithHomework !== undefined)
+      req.body.helpsWithHomework = req.body.helpsWithHomework === "true";
+    if (req.body.currentlyEmployed !== undefined)
+      req.body.currentlyEmployed = req.body.currentlyEmployed === "true";
+
+    // Parse languages - FIXED VERSION
+    if (req.body.languages !== undefined) {
+      try {
+        let langs = req.body.languages;
+
+        // If it's already an array, keep it as is
+        if (Array.isArray(langs)) {
+          req.body.languages = langs
+            .map((lang) => String(lang).trim())
+            .filter((lang) => lang.length > 0);
+        }
+        // If it's a string, try to parse it
+        else if (typeof langs === "string") {
+          // First, try direct JSON parse
+          try {
+            let parsed = JSON.parse(langs);
+
+            // Keep parsing nested JSON strings until we get an array
+            let maxIterations = 10; // Prevent infinite loops
+            let iterations = 0;
+
+            while (typeof parsed === "string" && iterations < maxIterations) {
+              parsed = JSON.parse(parsed);
+              iterations++;
+            }
+
+            // If we finally have an array, clean it up
+            if (Array.isArray(parsed)) {
+              req.body.languages = parsed
+                .map((lang) => {
+                  // If the language is still a nested string, try to extract the actual language name
+                  if (typeof lang === "string") {
+                    // Use regex to extract clean language names from the messy string
+                    const matches = lang.match(/([A-Za-z]+)(?=\\|"|$)/g);
+                    return matches
+                      ? matches.filter(
+                          (match) =>
+                            match.length > 2 &&
+                            !["true", "false", "null", "undefined"].includes(
+                              match.toLowerCase()
+                            )
+                        )
+                      : [];
+                  }
+                  return lang;
+                })
+                .flat() // Flatten in case we got arrays of arrays
+                .map((lang) => String(lang).trim())
+                .filter((lang) => lang.length > 0 && isNaN(lang)) // Remove empty strings and numbers
+                .filter((lang, index, arr) => arr.indexOf(lang) === index); // Remove duplicates
+            } else {
+              req.body.languages = [];
+            }
+          } catch (parseError) {
+            // If JSON parsing fails, try to extract language names using regex
+            const languageMatches = langs.match(/([A-Za-z]{3,})/g);
+            if (languageMatches) {
+              req.body.languages = languageMatches
+                .filter(
+                  (lang) =>
+                    !["true", "false", "null", "undefined"].includes(
+                      lang.toLowerCase()
+                    )
+                )
+                .filter((lang, index, arr) => arr.indexOf(lang) === index); // Remove duplicates
+            } else {
+              req.body.languages = [];
+            }
+          }
+        } else {
+          req.body.languages = [];
+        }
+
+        console.log("Processed languages:", req.body.languages);
+      } catch (e) {
+        console.error("Failed to parse languages:", e);
+        req.body.languages = [];
+      }
+    }
+
+    // Parse numeric fields
+    if (req.body.fee !== undefined) req.body.fee = Number(req.body.fee);
+    if (req.body.totalExperience !== undefined)
+      req.body.totalExperience = Number(req.body.totalExperience);
+    if (req.body.teachingExperience !== undefined)
+      req.body.teachingExperience = Number(req.body.teachingExperience);
+    if (req.body.onlineTeachingExperience !== undefined)
+      req.body.onlineTeachingExperience = Number(
+        req.body.onlineTeachingExperience
+      );
+
+    // Handle profile photo upload (NOT CNIC/ID proof)
+    if (req.files?.profilePhoto) {
+      if (teacher.profilePhoto) {
+        await deleteFile(teacher.profilePhoto);
+      }
       req.body.profilePhoto = await uploadFile(
         req.files.profilePhoto,
         "profile-photos/"
       );
     }
-    if (req.files.idProofFile) {
-      await deleteFile(teacher.idProofFile);
-      req.body.idProofFile = await uploadFile(
-        req.files.idProofFile,
-        "id-proofs/"
-      );
+
+    // If admin is approving, just update isApproved
+    if (req.user.role === "admin" && req.body.isApproved !== undefined) {
+      teacher.isApproved = req.body.isApproved;
+      await teacher.save();
+
+      const teacherWithUrls = await populateWithSignedUrls(teacher);
+      return res.status(200).json({
+        success: true,
+        data: teacherWithUrls,
+      });
     }
-  }
 
-  // If admin is approving, set isApproved
-  if (req.user.role === "admin" && req.body.isApproved !== undefined) {
-    teacher.isApproved = req.body.isApproved;
-    await teacher.save();
+    // Perform update
+    teacher = await Teacher.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
 
+    // Get signed URLs for response
     const teacherWithUrls = await populateWithSignedUrls(teacher);
-    return res.status(200).json({
+
+    res.status(200).json({
       success: true,
       data: teacherWithUrls,
     });
+  } catch (err) {
+    console.log("Error updating teacher profile:", err);
+    return next(
+      new ErrorResponse(`Profile update failed: ${err.message}`, 500)
+    );
   }
-
-  // For regular updates
-  teacher = await Teacher.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-    runValidators: true,
-  });
-
-  // Get signed URLs for the response
-  const teacherWithUrls = await populateWithSignedUrls(teacher);
-
-  res.status(200).json({
-    success: true,
-    data: teacherWithUrls,
-  });
 });
-
 // @desc    Delete teacher profile
 // @route   DELETE /api/v1/teachers/:id
 // @access  Private (Teacher owner or admin)
