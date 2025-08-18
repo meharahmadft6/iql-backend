@@ -12,6 +12,10 @@ const {
   getAllPublicTeacherProfiles,
   getPublicTeacherProfile,
   approveTeacher,
+  getHomeTutors,
+  getOnlineTeachers,
+  getHomeworkHelpers,
+  getTeachersBySubjectAndLocation,
 } = require("../controllers/teacherController");
 
 // Include other resource routers
@@ -21,6 +25,10 @@ const reviewRouter = require("../routes/reviews");
 router.use("/:teacherId/reviews", reviewRouter);
 router.route("/public").get(getAllPublicTeacherProfiles);
 router.route("/public/:id").get(getPublicTeacherProfile);
+router.route("/home-tutors").get(getHomeTutors);
+router.route("/online-teachers").get(getOnlineTeachers);
+router.route("/homework-helpers").get(getHomeworkHelpers);
+router.route("/filter").get(getTeachersBySubjectAndLocation);
 
 router.route("/").post(protect, authorize("teacher"), createTeacherProfile);
 

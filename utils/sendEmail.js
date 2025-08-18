@@ -4,10 +4,11 @@ const { htmlToText } = require("html-to-text");
 const path = require("path");
 
 class Email {
-  constructor(user, resetUrl) {
+  constructor(user, resetUrl = null, isApproved = null) {
     this.to = user.email;
     this.firstName = user.name.split(" ")[0];
     this.resetUrl = resetUrl;
+    this.isApproved = isApproved;
     this.from = `Infinity Quotient Learning <${process.env.EMAIL_FROM}>`;
   }
 
@@ -53,13 +54,13 @@ class Email {
     return pug.renderFile(templatePath, {
       firstName: this.firstName,
       resetUrl: this.resetUrl,
+      isApproved: this.isApproved,
       subject,
       currentYear: new Date().getFullYear(),
     });
   }
 
   // Send email with template
-  // In sendEmail.js
   async send(template, subject) {
     try {
       // 1) Render HTML
@@ -92,10 +93,12 @@ class Email {
         subject,
         to: this.to,
         from: this.from,
+        isApproved: this.isApproved,
       });
       throw new Error(`Email could not be sent: ${error.message}`);
     }
   }
+
   // Specific email methods
   async sendPasswordReset() {
     await this.send(
@@ -109,6 +112,15 @@ class Email {
       "passwordChanged",
       "Your password has been successfully changed"
     );
+  }
+
+  // New method for teacher approval status
+  async sendTeacherApprovalStatus() {
+    const subject = this.isApproved
+      ? " Your Teacher Application Has Been Approved!"
+      : "Update on Your Teacher Application";
+
+    await this.send("approval", subject);
   }
 }
 

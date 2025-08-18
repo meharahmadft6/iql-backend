@@ -3,6 +3,7 @@ const User = require("../models/User");
 const ErrorResponse = require("../utils/errorResponse");
 const asyncHandler = require("../middleware/async");
 const { uploadFile, getSignedUrl, deleteFile } = require("../utils/s3");
+const Email = require("../utils/sendEmail");
 
 // Helper function to populate teacher with signed URLs
 const populateWithSignedUrls = async (teacher) => {
@@ -96,7 +97,7 @@ exports.getTeacher = asyncHandler(async (req, res, next) => {
 // @access  Private (Teacher only)
 exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
   // Check if user is a teacher
-  console.log("Request body:", req.body);
+
   if (req.user.role !== "teacher") {
     return next(
       new ErrorResponse(
@@ -324,8 +325,6 @@ exports.updateTeacherProfile = asyncHandler(async (req, res, next) => {
         } else {
           req.body.languages = [];
         }
-
-        console.log("Processed languages:", req.body.languages);
       } catch (e) {
         console.error("Failed to parse languages:", e);
         req.body.languages = [];
@@ -486,13 +485,12 @@ exports.getAllTeacherProfiles = asyncHandler(async (req, res, next) => {
 exports.approveTeacher = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(req.body);
 
     // Extract the boolean value from the nested object if it exists
     const isApproved = req.body.isApproved?.isApproved ?? req.body.isApproved;
 
-    // Find teacher by ID
-    const teacher = await Teacher.findById(id);
+    // Find teacher by ID and populate user to get email
+    const teacher = await Teacher.findById(id).populate("user", "name email");
     if (!teacher) {
       return res
         .status(404)
@@ -502,6 +500,23 @@ exports.approveTeacher = async (req, res) => {
     // Update approval status
     teacher.isApproved = isApproved;
     await teacher.save();
+
+    // Send email notification
+    try {
+      const email = new Email(teacher.user, null, isApproved); // pass populated user
+      await email.sendTeacherApprovalStatus();
+
+      console.log(
+        `Approval status email sent to teacher: ${teacher.user.email}`
+      );
+    } catch (emailError) {
+      console.error("Failed to send approval email:", {
+        error: emailError.message,
+        teacherId: teacher._id,
+        teacherEmail: teacher.user?.email,
+        isApproved,
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -515,6 +530,7 @@ exports.approveTeacher = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 exports.getAllPublicTeacherProfiles = asyncHandler(async (req, res, next) => {
   // Fetch only approved teachers with full details
   const teachers = await Teacher.find({ isApproved: true }).populate({
@@ -544,7 +560,6 @@ exports.getAllPublicTeacherProfiles = asyncHandler(async (req, res, next) => {
       return teacherObj;
     })
   );
-
   res.status(200).json({
     success: true,
     count: teachersWithUrls.length,
@@ -581,3 +596,207 @@ exports.getPublicTeacherProfile = asyncHandler(async (req, res, next) => {
     data: teacherObj,
   });
 });
+// Get all Home Tutors (willingToTravel: true)
+exports.getHomeTutors = asyncHandler(async (req, res, next) => {
+  const teachers = await Teacher.find({
+    isApproved: true,
+    willingToTravel: true,
+  }).populate({
+    path: "user",
+    select: "name email role createdAt",
+  });
+
+  if (!teachers || teachers.length === 0) {
+    return next(new ErrorResponse("No home tutors found", 404));
+  }
+
+  const teachersWithUrls = await Promise.all(
+    teachers.map(async (teacher) => {
+      const teacherObj = teacher.toObject();
+
+      if (teacherObj.profilePhoto) {
+        teacherObj.profilePhotoUrl = await getSignedUrl(
+          teacherObj.profilePhoto
+        );
+      }
+      if (teacherObj.idProofFile) {
+        teacherObj.idProofUrl = await getSignedUrl(teacherObj.idProofFile);
+      }
+
+      return teacherObj;
+    })
+  );
+  // console.log(teachersWithUrls);
+
+  res.status(200).json({
+    success: true,
+    count: teachersWithUrls.length,
+    data: teachersWithUrls,
+  });
+});
+
+// Get all Online Teachers (availableForOnline: true)
+exports.getOnlineTeachers = asyncHandler(async (req, res, next) => {
+  const teachers = await Teacher.find({
+    isApproved: true,
+    availableForOnline: true,
+  }).populate({
+    path: "user",
+    select: "name email role createdAt",
+  });
+
+  if (!teachers || teachers.length === 0) {
+    return next(new ErrorResponse("No online teachers found", 404));
+  }
+
+  const teachersWithUrls = await Promise.all(
+    teachers.map(async (teacher) => {
+      const teacherObj = teacher.toObject();
+
+      if (teacherObj.profilePhoto) {
+        teacherObj.profilePhotoUrl = await getSignedUrl(
+          teacherObj.profilePhoto
+        );
+      }
+      if (teacherObj.idProofFile) {
+        teacherObj.idProofUrl = await getSignedUrl(teacherObj.idProofFile);
+      }
+
+      return teacherObj;
+    })
+  );
+
+  res.status(200).json({
+    success: true,
+    count: teachersWithUrls.length,
+    data: teachersWithUrls,
+  });
+});
+
+// Get all Teachers who help with Homework (helpsWithHomework: true)
+exports.getHomeworkHelpers = asyncHandler(async (req, res, next) => {
+  const teachers = await Teacher.find({
+    isApproved: true,
+    helpsWithHomework: true,
+  }).populate({
+    path: "user",
+    select: "name email role createdAt",
+  });
+
+  if (!teachers || teachers.length === 0) {
+    return next(new ErrorResponse("No teachers for homework help found", 404));
+  }
+
+  const teachersWithUrls = await Promise.all(
+    teachers.map(async (teacher) => {
+      const teacherObj = teacher.toObject();
+
+      if (teacherObj.profilePhoto) {
+        teacherObj.profilePhotoUrl = await getSignedUrl(
+          teacherObj.profilePhoto
+        );
+      }
+      if (teacherObj.idProofFile) {
+        teacherObj.idProofUrl = await getSignedUrl(teacherObj.idProofFile);
+      }
+
+      return teacherObj;
+    })
+  );
+
+  res.status(200).json({
+    success: true,
+    count: teachersWithUrls.length,
+    data: teachersWithUrls,
+  });
+});
+exports.getTeachersBySubjectAndLocation = asyncHandler(
+  async (req, res, next) => {
+    const { subject, location } = req.query;
+
+    let query = { isApproved: true };
+
+    // Build conditions array
+    let conditions = [];
+
+    if (subject) {
+      conditions.push({
+        subjects: {
+          $elemMatch: {
+            name: { $regex: subject, $options: "i" }, // partial + case-insensitive
+          },
+        },
+      });
+    }
+
+    if (location) {
+      // allow partial match e.g. "Lahore" will still match
+      conditions.push({
+        location: { $regex: location.split(",")[0].trim(), $options: "i" },
+      });
+    }
+
+    if (conditions.length > 0) {
+      query.$or = conditions;
+    }
+
+    let teachers = await Teacher.find(query)
+      .populate({
+        path: "user",
+        select: "name email role createdAt",
+      })
+      .populate("subjects")
+      .populate("education")
+      .populate("experience");
+
+    if (!teachers || teachers.length === 0) {
+      return next(
+        new ErrorResponse(
+          "No teachers found for the given subject and location",
+          404
+        )
+      );
+    }
+
+    // Rank results: both subject + location match → first
+    if (subject && location) {
+      teachers = teachers.sort((a, b) => {
+        const aSubject = a.subjects.some((s) =>
+          new RegExp(subject, "i").test(s.name)
+        );
+        const aLocation = new RegExp(location, "i").test(a.location);
+        const bSubject = b.subjects.some((s) =>
+          new RegExp(subject, "i").test(s.name)
+        );
+        const bLocation = new RegExp(location, "i").test(b.location);
+
+        return bSubject + bLocation - (aSubject + aLocation);
+      });
+    }
+
+    // Add signed URLs
+    const teachersWithUrls = await Promise.all(
+      teachers.map(async (teacher) => {
+        const teacherObj = teacher.toObject();
+
+        if (teacherObj.profilePhoto) {
+          teacherObj.profilePhotoUrl = await getSignedUrl(
+            teacherObj.profilePhoto
+          );
+        }
+        if (teacherObj.idProofFile) {
+          teacherObj.idProofUrl = await getSignedUrl(teacherObj.idProofFile);
+        }
+
+        return teacherObj;
+      })
+    );
+    // console.log(teachersWithUrls);
+
+    res.status(200).json({
+      success: true,
+      count: teachersWithUrls.length,
+      data: teachersWithUrls,
+    });
+  }
+);
