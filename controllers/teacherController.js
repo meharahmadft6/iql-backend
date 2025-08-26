@@ -96,13 +96,8 @@ exports.getTeacher = asyncHandler(async (req, res, next) => {
 // @route   POST /api/v1/teachers
 // @access  Private (Teacher only)
 exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
-  console.log("Create request received:", {
-    hasFiles: !!req.files,
-    fileKeys: req.files ? Object.keys(req.files) : [],
-    bodyKeys: Object.keys(req.body),
-  });
-
   // Check if user is a teacher
+
   if (req.user.role !== "teacher") {
     return next(
       new ErrorResponse(
@@ -126,48 +121,14 @@ exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
   // Add user to req.body
   req.body.user = req.user.id;
 
-  // Validate required files with better error messages
-  if (!req.files?.profilePhoto) {
-    return next(new ErrorResponse("Please upload a profile photo", 400));
-  }
-  if (!req.files?.idProofFile) {
-    return next(new ErrorResponse("Please upload an ID proof document", 400));
+  // Validate required files
+  if (!req.files?.profilePhoto || !req.files?.idProofFile) {
+    return next(
+      new ErrorResponse("Please upload both profile photo and ID proof", 400)
+    );
   }
 
   try {
-    // File size validation
-    const maxSize = 10 * 1024 * 1024; // 10MB per file
-    if (req.files.profilePhoto.size > maxSize) {
-      return next(
-        new ErrorResponse("Profile photo must be less than 10MB", 400)
-      );
-    }
-    if (req.files.idProofFile.size > maxSize) {
-      return next(
-        new ErrorResponse("ID proof file must be less than 10MB", 400)
-      );
-    }
-
-    // File type validation
-    const allowedImageTypes = ["image/jpeg", "image/jpg", "image/png"];
-    const allowedDocTypes = [
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "application/pdf",
-    ];
-
-    if (!allowedImageTypes.includes(req.files.profilePhoto.mimetype)) {
-      return next(
-        new ErrorResponse("Profile photo must be a JPEG or PNG image", 400)
-      );
-    }
-    if (!allowedDocTypes.includes(req.files.idProofFile.mimetype)) {
-      return next(
-        new ErrorResponse("ID proof must be a JPEG, PNG, or PDF file", 400)
-      );
-    }
-
     // Parse array fields from strings to objects
     if (typeof req.body.subjects === "string") {
       req.body.subjects = JSON.parse(req.body.subjects);
@@ -201,33 +162,11 @@ exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
       req.body.onlineTeachingExperience
     );
 
-    console.log("Starting file uploads...");
-
-    // Upload files to S3 with timeout handling
-    const uploadPromises = [
+    // Upload files to S3
+    const [profilePhotoKey, idProofKey] = await Promise.all([
       uploadFile(req.files.profilePhoto, "profile-photos/"),
       uploadFile(req.files.idProofFile, "id-proofs/"),
-    ];
-
-    // Add timeout to S3 uploads
-    const uploadWithTimeout = (promise, timeout = 60000) => {
-      return Promise.race([
-        promise,
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Upload timeout")), timeout)
-        ),
-      ]);
-    };
-
-    const [profilePhotoKey, idProofKey] = await Promise.all([
-      uploadWithTimeout(uploadPromises[0]),
-      uploadWithTimeout(uploadPromises[1]),
     ]);
-
-    console.log("Files uploaded successfully:", {
-      profilePhotoKey,
-      idProofKey,
-    });
 
     // Add file keys to request body
     req.body.profilePhoto = profilePhotoKey;
@@ -258,39 +197,10 @@ exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
       data: responseData,
     });
   } catch (err) {
-    console.error("Error creating teacher profile:", err);
-
     // Clean up any uploaded files if creation fails
-    if (req.body.profilePhoto) {
-      try {
-        await deleteFile(req.body.profilePhoto);
-      } catch (cleanupErr) {
-        console.error("Error cleaning up profile photo:", cleanupErr);
-      }
-    }
-    if (req.body.idProofFile) {
-      try {
-        await deleteFile(req.body.idProofFile);
-      } catch (cleanupErr) {
-        console.error("Error cleaning up ID proof file:", cleanupErr);
-      }
-    }
-
-    // Handle specific error types
-    if (err.message === "Upload timeout") {
-      return next(
-        new ErrorResponse(
-          "File upload timeout. Please try again with a smaller file.",
-          408
-        )
-      );
-    }
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return next(
-        new ErrorResponse("File size too large. Maximum size is 50MB.", 413)
-      );
-    }
-
+    if (req.body.profilePhoto) await deleteFile(req.body.profilePhoto);
+    if (req.body.idProofFile) await deleteFile(req.body.idProofFile);
+    console.log("Error creating teacher profile:", err);
     return next(
       new ErrorResponse(`Profile creation failed: ${err.message}`, 500)
     );
