@@ -31,19 +31,6 @@ app.use(morgan("dev"));
 // Cookie parser
 app.use(cookieParser());
 
-// File uploading
-app.use(
-  fileupload({
-    useTempFiles: true,
-    tempFileDir: "/tmp/",
-    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
-  })
-);
-
-// Static folder
-app.use(express.static(path.join(__dirname, "public")));
-
-// Enable CORS
 app.use(
   cors({
     origin: [
@@ -59,6 +46,20 @@ app.use(
     optionsSuccessStatus: 204,
   })
 );
+
+// File uploading
+app.use(
+  fileupload({
+    useTempFiles: true,
+    tempFileDir: "/tmp/",
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
+  })
+);
+
+// Static folder
+app.use(express.static(path.join(__dirname, "public")));
+
+// Enable CORS
 
 // Root test route
 app.get("/", (req, res) => {
