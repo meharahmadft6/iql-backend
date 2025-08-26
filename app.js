@@ -18,7 +18,7 @@ AWS.config.update({
 const auth = require("./routes/authRoutes");
 const teachers = require("./routes/teacherRoutes");
 const reviews = require("./routes/reviews");
-
+const postRequirements = require("./routes/postRequirementsRoutes");
 const app = express();
 
 // Body parser
@@ -83,6 +83,7 @@ app.get("/health", (req, res) => {
 app.use("/api/auth", auth);
 app.use("/api/teachers", teachers);
 app.use("/api/reviews", reviews);
+app.use("/api/post-requiremnet", postRequirements);
 
 // Error handling middleware (should be after all routes)
 app.use((err, req, res, next) => {

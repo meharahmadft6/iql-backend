@@ -27,8 +27,6 @@ class Email {
         tls: {
           rejectUnauthorized: false, // For testing only, remove in production
         },
-        debug: true,
-        logger: true,
       });
     }
 
@@ -121,6 +119,12 @@ class Email {
       : "Update on Your Teacher Application";
 
     await this.send("approval", subject);
+  }
+  async sendWelcome() {
+    await this.send(
+      "welcome",
+      "Welcome to Infinity Quotient Learning - Verify Your Email"
+    );
   }
 }
 
