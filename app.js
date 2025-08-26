@@ -50,7 +50,6 @@ app.use(
       "http://localhost:3001",
       "https://infinityquotientlearning.vercel.app",
       "https://infinityquotientlearning.com",
-      "https://infinityquotientlearning.com/teachers",
       "https://www.infinityquotientlearning.com", // Add this if you use www
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
