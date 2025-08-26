@@ -7,6 +7,13 @@ const fileupload = require("express-fileupload");
 const path = require("path");
 const AWS = require("aws-sdk");
 
+const auth = require("./routes/authRoutes");
+const teachers = require("./routes/teacherRoutes");
+const reviews = require("./routes/reviews");
+const postRequirements = require("./routes/postRequirementsRoutes");
+
+const app = express();
+
 // Configure AWS S3
 AWS.config.update({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -14,12 +21,38 @@ AWS.config.update({
   region: process.env.AWS_REGION,
 });
 
-// Route files
-const auth = require("./routes/authRoutes");
-const teachers = require("./routes/teacherRoutes");
-const reviews = require("./routes/reviews");
-const postRequirements = require("./routes/postRequirementsRoutes");
-const app = express();
+// ====== CORS (Apply FIRST, before routes) ======
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3001",
+      "https://infinityquotientlearning.vercel.app",
+      "https://infinityquotientlearning.com",
+      "https://www.infinityquotientlearning.com",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
+
+// Ensure headers on ALL responses (fallback)
+app.use((req, res, next) => {
+  res.header(
+    "Access-Control-Allow-Origin",
+    "https://infinityquotientlearning.com"
+  );
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+  );
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 // Body parser
 app.use(express.json({ limit: "50mb" }));
@@ -43,30 +76,12 @@ app.use(
 // Static folder
 app.use(express.static(path.join(__dirname, "public")));
 
-// Enable CORS
-app.use(
-  cors({
-    origin: [
-      "http://localhost:3001",
-      "https://infinityquotientlearning.vercel.app",
-      "https://infinityquotientlearning.com",
-      "https://www.infinityquotientlearning.com", // Add this if you use www
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
-  })
-);
-
 // Root test route
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
     message: "Welcome to Infinite Quotient Learning API",
     version: "1.0.0",
-    documentation: "https://github.com/your-repo/docs",
   });
 });
 
@@ -85,7 +100,7 @@ app.use("/api/teachers", teachers);
 app.use("/api/reviews", reviews);
 app.use("/api/post-requiremnet", postRequirements);
 
-// Error handling middleware (should be after all routes)
+// Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
