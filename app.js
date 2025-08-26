@@ -44,21 +44,21 @@ app.use(
 app.use(express.static(path.join(__dirname, "public")));
 
 // Enable CORS
-// app.use(
-//   cors({
-//     origin: [
-//       "http://localhost:3001",
-//       "https://infinityquotientlearning.vercel.app",
-//       "https://infinityquotientlearning.com",
-//       "https://www.infinityquotientlearning.com", // Add this if you use www
-//     ],
-//     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-//     allowedHeaders: ["Content-Type", "Authorization"],
-//     credentials: true,
-//     preflightContinue: false,
-//     optionsSuccessStatus: 204,
-//   })
-// );
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3001",
+      "https://infinityquotientlearning.vercel.app",
+      "https://infinityquotientlearning.com",
+      "https://www.infinityquotientlearning.com", // Add this if you use www
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+  })
+);
 
 // Root test route
 app.get("/", (req, res) => {
