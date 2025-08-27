@@ -1,6 +1,4 @@
 const AWS = require("aws-sdk");
-const fs = require("fs");
-const path = require("path");
 
 // Configure AWS
 AWS.config.update({
@@ -11,35 +9,29 @@ AWS.config.update({
 
 const s3 = new AWS.S3();
 
-// Enhanced upload function with better error handling
+// Updated upload function to handle buffer
 exports.uploadFile = async (file, folder = "") => {
-  if (!file || !file.tempFilePath) {
+  if (!file || !file.buffer) {
     throw new Error("Invalid file object");
   }
 
-  const fileStream = fs.createReadStream(file.tempFilePath);
-  const fileExt = path.extname(file.name);
+  const fileExt = file.originalname.split(".").pop();
   const uniqueKey = `${folder}${Date.now()}_${Math.random()
     .toString(36)
-    .substring(2)}${fileExt}`;
+    .substring(2)}.${fileExt}`;
 
   const uploadParams = {
     Bucket: process.env.AWS_BUCKET_NAME,
-    Body: fileStream,
+    Body: file.buffer,
     Key: uniqueKey,
     ContentType: file.mimetype,
-    ACL: "private", // Set to 'public-read' if public access needed
+    ACL: "private",
   };
 
   try {
     const data = await s3.upload(uploadParams).promise();
-    fs.unlinkSync(file.tempFilePath); // Clean up temp file
     return data.Key;
   } catch (err) {
-    // Clean up temp file if exists
-    if (file.tempFilePath && fs.existsSync(file.tempFilePath)) {
-      fs.unlinkSync(file.tempFilePath);
-    }
     throw new Error(`S3 upload failed: ${err.message}`);
   }
 };

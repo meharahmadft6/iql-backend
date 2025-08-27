@@ -4,11 +4,17 @@ const { htmlToText } = require("html-to-text");
 const path = require("path");
 
 class Email {
-  constructor(user, resetUrl = null, isApproved = null) {
+  constructor(
+    user,
+    resetUrl = null,
+    isApproved = null,
+    verificationUrl = null
+  ) {
     this.to = user.email;
     this.firstName = user.name.split(" ")[0];
     this.resetUrl = resetUrl;
     this.isApproved = isApproved;
+    this.verificationUrl = verificationUrl;
     this.from = `Infinity Quotient Learning <${process.env.EMAIL_FROM}>`;
   }
 
@@ -53,11 +59,11 @@ class Email {
       firstName: this.firstName,
       resetUrl: this.resetUrl,
       isApproved: this.isApproved,
+      verificationUrl: this.verificationUrl,
       subject,
       currentYear: new Date().getFullYear(),
     });
   }
-
   // Send email with template
   async send(template, subject) {
     try {
@@ -124,6 +130,12 @@ class Email {
     await this.send(
       "welcome",
       "Welcome to Infinity Quotient Learning - Verify Your Email"
+    );
+  }
+  async sendVerificationEmail() {
+    await this.send(
+      "verification",
+      "Verify Your Email - Infinity Quotient Learning"
     );
   }
 }

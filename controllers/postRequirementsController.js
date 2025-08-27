@@ -6,180 +6,161 @@ const { uploadFile } = require("../utils/s3");
 // @desc    Create a new tutor request (with auto user creation if needed)
 // @route   POST /api/post-requirements
 // @access  Public (for unauthenticated users) / Private (for authenticated)
-  exports.createPostRequirement = async (req, res, next) => {
-    try {
-      let user;
-      console.log("Request ", req.body);
-      console.log("File ", req.file);
-      console.log("User ", req.user);
+exports.createPostRequirement = async (req, res, next) => {
+  try {
+    let user;
+    console.log("Request body:", req.body);
 
-      if (req.user) {
-        // ✅ User is logged in
-        user = req.user;
+    // Validate request body exists
+    if (!req.body || Object.keys(req.body).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Request body is empty or malformed",
+      });
+    }
 
-        if (user.role !== "student") {
-          return res.status(403).json({
-            success: false,
-            message: "Only students can create post requirements",
-          });
-        }
-      } else {
-        // ✅ User not logged in → create new account
-        const { email, password, name, location } = req.body;
+    if (req.user) {
+      // ✅ User is logged in
+      user = req.user;
 
-        if (!email || !password || !name) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "Please provide email, password, and name to create an account",
-          });
-        }
-
-        // Validate email
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-          return res.status(400).json({
-            success: false,
-            message: "Please provide a valid email address",
-          });
-        }
-
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-          return res.status(400).json({
-            success: false,
-            message: "User already exists. Please login first.",
-          });
-        }
-
-        if (!location || !req.body["phone.number"]) {
-          return res.status(400).json({
-            success: false,
-            message: "Please provide location and phone number",
-          });
-        }
-
-        user = await User.create({
-          email,
-          password,
-          name,
-          location,
-          role: "student",
+      if (user.role !== "student") {
+        return res.status(403).json({
+          success: false,
+          message: "Only students can create post requirements",
         });
-
-        // send verification email
-        // try {
-        //   const verificationToken = user.getResetPasswordToken();
-        //   await user.save({ validateBeforeSave: false });
-
-        //   const verificationUrl = `${req.protocol}://${req.get(
-        //     "host"
-        //   )}/api/auth/verify-email/${verificationToken}`;
-
-        //   await new Email(user, verificationUrl).sendWelcome();
-        // } catch (emailError) {
-        //   console.error("Email sending failed:", emailError);
-        // }
       }
+    } else {
+      // ✅ User not logged in → create new account
+      const { email, password, name, location } = req.body;
 
-      // ✅ Required fields validation (for both logged in and new users)
-      const { description, serviceType, employmentType, location } = req.body;
-
-      if (!description || !serviceType || !employmentType || !location) {
+      if (!email || !password || !name) {
         return res.status(400).json({
           success: false,
           message:
-            "Please provide description, service type, employment type, and location",
+            "Please provide email, password, and name to create an account",
         });
       }
 
-      // Phone number is required for both logged in and new users in the post requirement
-      if (!req.body["phone.number"]) {
+      // Validate email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
         return res.status(400).json({
           success: false,
-          message: "Please provide phone number",
+          message: "Please provide a valid email address",
         });
       }
 
-      if (!req.body["budget.amount"] || !req.body["budget.frequency"]) {
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
         return res.status(400).json({
           success: false,
-          message: "Please provide budget amount and frequency",
+          message: "User already exists. Please login first.",
         });
       }
 
-      // ✅ Transform req.body → schema format
-      const postData = {
-        description,
-        serviceType,
-        employmentType,
-        budget: {
-          currency: req.body["budget.currency"] || "PKR",
-          amount: parseFloat(req.body["budget.amount"]),
-          frequency: req.body["budget.frequency"],
-        },
-        meetingOptions: [],
-        languages: [],
-        subjects: [],
-        user: user._id,
+      if (!location || !req.body["phone.number"]) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide location and phone number",
+        });
+      }
+
+      user = await User.create({
+        email,
+        password,
+        name,
         location,
-        phone: {
-          countryCode: req.body["phone.countryCode"] || "+92",
-          number: req.body["phone.number"],
-        },
-      };
-
-      if (isNaN(postData.budget.amount) || postData.budget.amount <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Please provide a valid budget amount",
-        });
-      }
-
-      // ✅ Parse meetingOptions[]
-      Object.keys(req.body).forEach((key) => {
-        if (key.startsWith("meetingOptions[")) {
-          postData.meetingOptions.push(req.body[key]);
-        }
+        role: "student",
       });
+    }
 
-      if (postData.meetingOptions.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Please select at least one meeting option",
-        });
-      }
+    // ✅ Required fields validation (for both logged in and new users)
+    const { description, serviceType, employmentType, location } = req.body;
 
-      // ✅ Parse languages[]
-      Object.keys(req.body).forEach((key) => {
-        if (key.startsWith("languages[")) {
-          const language = req.body[key];
-          if (language && language.trim()) {
-            postData.languages.push(language.trim());
-          }
-        }
+    if (!description || !serviceType || !employmentType || !location) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please provide description, service type, employment type, and location",
       });
+    }
 
-      if (postData.languages.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Please select at least one preferred language",
-        });
-      }
-
-      // ✅ Parse subjects[]
-      const subjects = {};
-      Object.keys(req.body).forEach((key) => {
-        const match = key.match(/^subjects\[(\d+)\]\[(\w+)\]$/);
-        if (match) {
-          const index = match[1];
-          const field = match[2];
-          if (!subjects[index]) subjects[index] = {};
-          subjects[index][field] = req.body[key];
-        }
+    // Phone number is required for both logged in and new users in the post requirement
+    if (!req.body["phone.number"]) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide phone number",
       });
+    }
 
-      const validSubjects = Object.values(subjects).filter(
+    if (!req.body["budget.amount"] || !req.body["budget.frequency"]) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide budget amount and frequency",
+      });
+    }
+
+    // ✅ Transform req.body → schema format
+    const postData = {
+      description,
+      serviceType,
+      employmentType,
+      budget: {
+        currency: req.body["budget.currency"] || "PKR",
+        amount: parseFloat(req.body["budget.amount"]),
+        frequency: req.body["budget.frequency"],
+      },
+      meetingOptions: [],
+      languages: [],
+      subjects: [],
+      user: user._id,
+      location,
+      phone: {
+        countryCode: req.body["phone.countryCode"] || "+92",
+        number: req.body["phone.number"],
+      },
+    };
+
+    if (isNaN(postData.budget.amount) || postData.budget.amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid budget amount",
+      });
+    }
+
+    // ✅ Parse meetingOptions[]
+    Object.keys(req.body).forEach((key) => {
+      if (key.startsWith("meetingOptions[")) {
+        postData.meetingOptions.push(req.body[key]);
+      }
+    });
+
+    // ✅ Meeting Options
+    if (
+      Array.isArray(req.body.meetingOptions) &&
+      req.body.meetingOptions.length > 0
+    ) {
+      postData.meetingOptions = req.body.meetingOptions;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Please select at least one meeting option",
+      });
+    }
+
+    // ✅ Languages
+    if (Array.isArray(req.body.languages) && req.body.languages.length > 0) {
+      postData.languages = req.body.languages.map((lang) => lang.trim());
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Please select at least one preferred language",
+      });
+    }
+
+    // ✅ Subjects
+    if (Array.isArray(req.body.subjects) && req.body.subjects.length > 0) {
+      const validSubjects = req.body.subjects.filter(
         (subject) => subject.name && subject.name.trim() && subject.level
       );
 
@@ -191,54 +172,81 @@ const { uploadFile } = require("../utils/s3");
       }
 
       postData.subjects = validSubjects;
-
-      // ✅ Upload image to S3 if provided
-      if (req.file) {
-        try {
-          const imageUrl = await uploadFile(req.file, "requirements/");
-          postData.image = imageUrl;
-        } catch (uploadErr) {
-          console.error("S3 Upload Failed:", uploadErr);
-          return res.status(500).json({
-            success: false,
-            message: "Image upload failed",
-          });
-        }
-      }
-
-      // ✅ Save Post Requirement
-      const postRequirement = await PostRequirement.create(postData);
-
-      res.status(201).json({
-        success: true,
-        data: postRequirement,
-        message: req.user
-          ? "Post requirement created successfully."
-          : "Account created and post requirement submitted successfully. Please check your email to verify your account.",
-      });
-    } catch (err) {
-      console.error("Error creating post requirement:", err);
-
-      if (err.name === "ValidationError") {
-        const messages = Object.values(err.errors).map((error) => error.message);
-        return res
-          .status(400)
-          .json({ success: false, message: messages.join(". ") });
-      }
-
-      if (err.code === 11000) {
-        return res.status(400).json({
-          success: false,
-          message: "A post requirement with this data already exists",
-        });
-      }
-
-      res.status(500).json({
+    } else {
+      return res.status(400).json({
         success: false,
-        message: "Server Error. Please try again later.",
+        message: "Please provide at least one subject",
       });
     }
-  };
+
+    // Enhanced file handling
+    if (req.file) {
+      try {
+        console.log("File received:", {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+          bufferLength: req.file.buffer?.length,
+        });
+
+        // Validate file buffer exists
+        if (!req.file.buffer || req.file.buffer.length === 0) {
+          throw new Error("File buffer is empty");
+        }
+
+        const imageUrl = await uploadFile(req.file, "requirements/");
+        postData.image = imageUrl;
+      } catch (uploadErr) {
+        console.error("S3 Upload Failed:", uploadErr);
+        return res.status(500).json({
+          success: false,
+          message: "Image upload failed: " + uploadErr.message,
+        });
+      }
+    }
+
+    // ✅ Save Post Requirement
+    const postRequirement = await PostRequirement.create(postData);
+
+    res.status(201).json({
+      success: true,
+      data: postRequirement,
+      message: req.user
+        ? "Post requirement created successfully."
+        : "Account created and post requirement submitted successfully. Please check your email to verify your account.",
+    });
+  } catch (err) {
+    console.error("Error creating post requirement:", err);
+
+    // Handle specific stream errors
+    if (err.message && err.message.includes("Unexpected end of form")) {
+      return res.status(400).json({
+        success: false,
+        message: "Upload was interrupted. Please try again.",
+      });
+    }
+
+    if (err.name === "ValidationError") {
+      const messages = Object.values(err.errors).map((error) => error.message);
+      return res.status(400).json({
+        success: false,
+        message: messages.join(". "),
+      });
+    }
+
+    if (err.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "A post requirement with this data already exists",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Server Error. Please try again later.",
+    });
+  }
+};
 // @desc    Get all post requirements
 // @route   GET /api/post-requirements
 // @access  Public

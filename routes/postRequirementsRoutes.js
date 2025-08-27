@@ -1,4 +1,5 @@
 const express = require("express");
+const upload = require("../middleware/multer");
 const {
   createPostRequirement,
   getPostRequirements,
@@ -15,15 +16,25 @@ const {
 
 const router = express.Router();
 
-router
-  .route("/")
-  .get(getPostRequirements)
-  .post(optionalAuth, checkStudentRole, createPostRequirement);
+// 📌 Add (POST)
+router.post(
+  "/",
+  upload.single("image"),
+  optionalAuth,
+  checkStudentRole,
+  createPostRequirement
+);
 
-router
-  .route("/:id")
-  .get(getPostRequirement)
-  .put(protect, updatePostRequirement)
-  .delete(protect, deletePostRequirement);
+// 📌 Get All (GET)
+router.get("/", getPostRequirements);
+
+// 📌 Get Single (GET)
+router.get("/:id", getPostRequirement);
+
+// 📌 Update (PUT)
+router.put("/:id", protect, upload.single("image"), updatePostRequirement);
+
+// 📌 Delete (DELETE)
+router.delete("/:id", protect, deletePostRequirement);
 
 module.exports = router;

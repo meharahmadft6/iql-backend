@@ -30,6 +30,12 @@ const UserSchema = new mongoose.Schema({
     enum: ["teacher", "student", "admin"],
     default: "student",
   },
+  isVerified: {
+    type: Boolean,
+    default: false,
+  },
+  verificationToken: String,
+  verificationExpire: Date,
   resetPasswordToken: String,
   resetPasswordExpire: Date,
   createdAt: {
@@ -69,11 +75,36 @@ UserSchema.methods.getResetPasswordToken = function () {
   return resetToken;
 };
 
-
 // Sign JWT and return
-  UserSchema.methods.getSignedJwtToken = function () {
-    return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRE,
-    });
-  };
+UserSchema.methods.getSignedJwtToken = function () {
+  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE,
+  });
+};
+// Generate and hash verification token
+UserSchema.methods.getVerificationToken = function () {
+  // Generate token
+  const verificationToken = crypto.randomBytes(20).toString("hex");
+
+  // Hash token and set to verificationToken field
+  this.verificationToken = crypto
+    .createHash("sha256")
+    .update(verificationToken)
+    .digest("hex");
+
+  // Set expire (24 hours)
+  this.verificationExpire = Date.now() + 24 * 60 * 60 * 1000;
+
+  return verificationToken;
+};
+
+// Check if verification token is valid and not expired
+UserSchema.methods.isValidVerificationToken = function (token) {
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  return (
+    this.verificationToken === hashedToken &&
+    this.verificationExpire > Date.now()
+  );
+};
 module.exports = mongoose.model("User", UserSchema);

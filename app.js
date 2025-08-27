@@ -40,7 +40,10 @@ app.use(
 app.use((req, res, next) => {
   res.header(
     "Access-Control-Allow-Origin",
-    "https://infinityquotientlearning.com"
+    "https://infinityquotientlearning.com",
+    "http://localhost:3001",
+    "https://infinityquotientlearning.vercel.app",
+    "https://www.infinityquotientlearning.com"
   );
   res.header(
     "Access-Control-Allow-Methods",
@@ -64,14 +67,14 @@ app.use(morgan("dev"));
 // Cookie parser
 app.use(cookieParser());
 
-// File uploading
-app.use(
-  fileupload({
-    useTempFiles: true,
-    tempFileDir: "/tmp/",
-    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
-  })
-);
+// // File uploading
+// app.use(
+//   fileupload({
+//     useTempFiles: true,
+//     tempFileDir: "/tmp/",
+//     limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
+//   })
+// );
 
 // Static folder
 app.use(express.static(path.join(__dirname, "public")));
@@ -98,7 +101,7 @@ app.get("/health", (req, res) => {
 app.use("/api/auth", auth);
 app.use("/api/teachers", teachers);
 app.use("/api/reviews", reviews);
-app.use("/api/post-requiremnet", postRequirements);
+app.use("/api/post-requirement", postRequirements);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

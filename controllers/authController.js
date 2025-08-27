@@ -20,8 +20,36 @@ exports.register = asyncHandler(async (req, res, next) => {
       role,
     });
 
-    // If success, send token
-    sendTokenResponse(user, 200, res);
+    // Generate verification token
+    const verificationToken = user.getVerificationToken();
+    await user.save({ validateBeforeSave: false });
+
+    // Create verification URL
+    const frontendUrl =
+      process.env.NODE_ENV === "production"
+        ? process.env.FRONTEND_URL
+        : "http://localhost:3001";
+
+    const verificationUrl = `${frontendUrl}/verify-email/${verificationToken}`;
+    try {
+      // Send verification email
+      const emailService = new Email(user, null, null, verificationUrl);
+      await emailService.sendVerificationEmail();
+
+      res.status(200).json({
+        success: true,
+        message:
+          "Registration successful. Please check your email to verify your account.",
+      });
+    } catch (emailError) {
+      console.error("Email sending error:", emailError);
+      // If email fails, still respond with success but note the issue
+      res.status(200).json({
+        success: true,
+        message:
+          "Registration successful. Verification email could not be sent. Please contact support.",
+      });
+    }
   } catch (err) {
     // Check for duplicate key error
     if (err.code === 11000 && err.keyPattern?.email) {
@@ -30,7 +58,7 @@ exports.register = asyncHandler(async (req, res, next) => {
         message: "Email already exists. Please use a different one.",
       });
     }
-++
+
     // For any other error
     console.error(err);
     return res.status(500).json({
@@ -39,7 +67,6 @@ exports.register = asyncHandler(async (req, res, next) => {
     });
   }
 });
-
 // @desc    Login user
 // @access  Public
 exports.login = asyncHandler(async (req, res, next) => {
@@ -49,7 +76,10 @@ exports.login = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("Please provide an email and password", 400));
   }
 
-  const user = await User.findOne({ email }).select("+password");
+  const user = await User.findOne({ email }).select(
+    "name email role isVerified password"
+  );
+
   if (!user) {
     return next(new ErrorResponse("Invalid credentials", 401));
   }
@@ -57,6 +87,16 @@ exports.login = asyncHandler(async (req, res, next) => {
   const isMatch = await user.matchPassword(password);
   if (!isMatch) {
     return next(new ErrorResponse("Invalid credentials", 401));
+  }
+
+  // Check if user is verified
+  if (!user.isVerified) {
+    return next(
+      new ErrorResponse(
+        "Please verify your email before logging in. Check your email for verification link.",
+        401
+      )
+    );
   }
 
   let profileExists = false;
@@ -111,10 +151,9 @@ exports.getMe = asyncHandler(async (req, res, next) => {
       success: true,
       data: user,
     });
-
   } catch (err) {
     console.error("Error fetching user profile:", err.message);
-    
+
     // Handle invalid ObjectId (e.g., if req.user.id is malformed)
     if (err.name === "CastError") {
       return res.status(400).json({
@@ -181,40 +220,43 @@ exports.updatePassword = asyncHandler(async (req, res, next) => {
 // @access  Public
 exports.forgotPassword = asyncHandler(async (req, res, next) => {
   const user = await User.findOne({ email: req.body.email });
-
+  console.log("Request email for password reset:", req.body.email);
+  console.log("User found for password reset:", user);
   if (!user) {
     return res.status(200).json({
       success: true,
-      data: "If an account exists with this email, a reset link has been sent"
+      data: "If an account exists with this email, a reset link has been sent",
     });
   }
 
   const resetToken = user.getResetPasswordToken();
   await user.save({ validateBeforeSave: false });
 
-const resetUrl = `${process.env.HOST}/reset-password/${resetToken}`;
-console.log(resetUrl);
+  const resetUrl = `${process.env.HOST}/reset-password/${resetToken}`;
+  console.log(resetUrl);
   try {
     const email = new Email(user, resetUrl);
     await email.sendPasswordReset();
 
     res.status(200).json({
       success: true,
-      data: "Password reset link sent to email"
+      data: "Password reset link sent to email",
     });
   } catch (err) {
-    console.error('Full controller error:', {
+    console.error("Full controller error:", {
       error: err.message,
       stack: err.stack,
       userEmail: user.email,
-      resetUrl
+      resetUrl,
     });
 
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
     await user.save({ validateBeforeSave: false });
 
-    return next(new ErrorResponse(`Email could not be sent: ${err.message}`, 500));
+    return next(
+      new ErrorResponse(`Email could not be sent: ${err.message}`, 500)
+    );
   }
 });
 
@@ -222,7 +264,7 @@ console.log(resetUrl);
 // @route   PUT /api/v1/auth/resetpassword/:token
 // @access  Public
 exports.resetPassword = asyncHandler(async (req, res, next) => {
-  console.log("Request body:",req.body);
+  console.log("Request body:", req.body);
   const tokenParam = req.params.resettoken || req.params.token;
   if (!tokenParam) {
     return next(new ErrorResponse("Token not provided", 400));
@@ -235,7 +277,7 @@ exports.resetPassword = asyncHandler(async (req, res, next) => {
 
   const user = await User.findOne({
     resetPasswordToken: hashedToken,
-    resetPasswordExpire: { $gt: Date.now() }
+    resetPasswordExpire: { $gt: Date.now() },
   });
 
   if (!user) {
@@ -279,6 +321,84 @@ const sendTokenResponse = (user, statusCode, res, profileExists = null) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        isVerified: user.isVerified,
       },
     });
 };
+exports.verifyEmail = asyncHandler(async (req, res, next) => {
+  const { token } = req.params;
+
+  if (!token) {
+    return next(new ErrorResponse("Invalid verification token", 400));
+  }
+
+  // Hash the token to compare with stored hash
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  // Find user with matching token and not expired
+  const user = await User.findOne({
+    verificationToken: hashedToken,
+    verificationExpire: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    return next(
+      new ErrorResponse("Invalid or expired verification token", 400)
+    );
+  }
+
+  // Update user verification status
+  user.isVerified = true;
+  user.verificationToken = undefined;
+  user.verificationExpire = undefined;
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Email verified successfully. You can now log in.",
+  });
+});
+
+// @desc    Resend verification email
+// @route   POST /api/v1/auth/resend-verification
+// @access  Public
+exports.resendVerification = asyncHandler(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return next(new ErrorResponse("Please provide an email", 400));
+  }
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    return next(new ErrorResponse("User not found", 404));
+  }
+
+  if (user.isVerified) {
+    return next(new ErrorResponse("Email is already verified", 400));
+  }
+
+  // Generate new verification token
+  const verificationToken = user.getVerificationToken();
+  await user.save({ validateBeforeSave: false });
+
+  // Create verification URL
+  const verificationUrl = `${req.protocol}://${req.get(
+    "host"
+  )}/api/auth/verify-email/${verificationToken}`;
+
+  try {
+    // Send verification email
+    const emailService = new Email(user, verificationUrl);
+    await emailService.sendVerificationEmail();
+
+    res.status(200).json({
+      success: true,
+      message: "Verification email sent successfully.",
+    });
+  } catch (error) {
+    console.error("Email sending error:", error);
+    return next(new ErrorResponse("Email could not be sent", 500));
+  }
+});

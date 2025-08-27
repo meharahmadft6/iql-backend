@@ -1,0 +1,267 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    meta(http-equiv="X-UA-Compatible", content="IE=edge")
+    title Verify Your Email - Infinity Quotient Learning
+    
+    style(type="text/css").
+      /* Same styles as your password reset template */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.7;
+        color: #2c3e50;
+        background-color: #f8f9fa;
+        margin: 0;
+        padding: 0;
+        -webkit-text-size-adjust: 100%;
+        -ms-text-size-adjust: 100%;
+      }
+      
+      .email-container {
+        max-width: 600px;
+        margin: 20px auto;
+        background-color: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+      }
+      
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        text-align: center;
+        padding: 40px 30px;
+      }
+      
+      .logo {
+        font-size: 28px;
+        font-weight: bold;
+        margin-bottom: 8px;
+        letter-spacing: -0.5px;
+      }
+      
+      .tagline {
+        font-size: 14px;
+        opacity: 0.9;
+        font-weight: 300;
+      }
+      
+      .content {
+        padding: 40px 30px;
+      }
+      
+      .greeting {
+        font-size: 20px;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 20px;
+      }
+      
+      .message {
+        font-size: 16px;
+        color: #5a6c7d;
+        margin-bottom: 25px;
+      }
+      
+      .button-container {
+        text-align: center;
+        margin: 35px 0;
+      }
+      
+      .verify-button {
+        display: inline-block;
+        padding: 16px 32px;
+        background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+        color: white !important;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        border: none;
+        cursor: pointer;
+      }
+      
+      .verify-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+      }
+      
+      .security-notice {
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 25px 0;
+      }
+      
+      .security-notice .icon {
+        font-size: 20px;
+        margin-right: 8px;
+      }
+      
+      .security-notice p {
+        margin: 0;
+        color: #856404;
+        font-size: 14px;
+      }
+      
+      .alternative-link {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        margin-top: 30px;
+      }
+      
+      .alternative-link p {
+        font-size: 13px;
+        color: #6c757d;
+        margin: 0 0 10px 0;
+      }
+      
+      .url-text {
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        color: #495057;
+        word-break: break-all;
+        background-color: #e9ecef;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 0;
+      }
+      
+      .footer {
+        background-color: #f8f9fa;
+        padding: 30px;
+        text-align: center;
+        border-top: 1px solid #e9ecef;
+      }
+      
+      .support-info {
+        margin-bottom: 20px;
+      }
+      
+      .support-info p {
+        font-size: 14px;
+        color: #6c757d;
+        margin: 5px 0;
+      }
+      
+      .support-link {
+        color: #667eea;
+        text-decoration: none;
+      }
+      
+      .support-link:hover {
+        text-decoration: underline;
+      }
+      
+      .copyright {
+        font-size: 12px;
+        color: #adb5bd;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #e9ecef;
+      }
+      
+      @media only screen and (max-width: 600px) {
+        .email-container {
+          margin: 10px;
+          border-radius: 8px;
+        }
+        
+        .header,
+        .content,
+        .footer {
+          padding: 25px 20px;
+        }
+        
+        .logo {
+          font-size: 24px;
+        }
+        
+        .greeting {
+          font-size: 18px;
+        }
+        
+        .verify-button {
+          padding: 14px 28px;
+          font-size: 15px;
+        }
+      }
+      
+      @media (prefers-color-scheme: dark) {
+        body {
+          background-color: #1a1a1a;
+        }
+        
+        .email-container {
+          background-color: #2d3748;
+          color: #e2e8f0;
+        }
+        
+        .content {
+          color: #e2e8f0;
+        }
+        
+        .greeting {
+          color: #f7fafc;
+        }
+        
+        .message {
+          color: #cbd5e0;
+        }
+        
+        .footer {
+          background-color: #1a202c;
+          border-top-color: #4a5568;
+        }
+      }
+
+  body
+    .email-container
+      .header
+        .logo Infinity Quotient Learning
+        .tagline Empowering minds, transforming futures
+
+      .content
+        .greeting Welcome #{firstName || 'there'}!
+        
+        p.message Thank you for registering with Infinity Quotient Learning. To complete your registration and access all features, please verify your email address by clicking the button below.
+
+        .button-container
+          a.verify-button(href=verificationUrl, target="_blank") Verify My Email
+
+        .security-notice
+          p
+            span.icon 🔒
+            | This verification link will expire in 24 hours for your security.
+
+        p.message If you didn't create an account with us, please ignore this email.
+
+        .alternative-link
+          p If the button above doesn't work, you can copy and paste this link into your browser:
+          p.url-text #{verificationUrl}
+
+      .footer
+        .support-info
+          p Need help? Contact our support team
+          p
+            | Email: 
+            a.support-link(href="mailto:support@infinityquotient.com") support@infinityquotient.com
+          p
+            | Phone: 
+            a.support-link(href="tel:+1234567890") +1 (234) 567-890
+
+        .copyright
+          p &copy; #{currentYear || new Date().getFullYear()} Infinity Quotient Learning. All rights reserved.
