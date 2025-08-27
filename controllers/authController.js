@@ -27,8 +27,8 @@ exports.register = asyncHandler(async (req, res, next) => {
     // Create verification URL
     const frontendUrl =
       process.env.NODE_ENV === "production"
-        ? process.env.FRONTEND_URL
-        : "http://localhost:3001";
+        ? process.env.HOST
+        : process.env.FRONTEND_URL;
 
     const verificationUrl = `${frontendUrl}/verify-email/${verificationToken}`;
     try {
