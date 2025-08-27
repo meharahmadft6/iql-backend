@@ -9,7 +9,6 @@ const { uploadFile } = require("../utils/s3");
 exports.createPostRequirement = async (req, res, next) => {
   try {
     let user;
-    console.log("Request body:", req.body);
 
     // Validate request body exists
     if (!req.body || Object.keys(req.body).length === 0) {
@@ -182,20 +181,8 @@ exports.createPostRequirement = async (req, res, next) => {
     // Enhanced file handling
     if (req.file) {
       try {
-        console.log("File received:", {
-          originalname: req.file.originalname,
-          mimetype: req.file.mimetype,
-          size: req.file.size,
-          bufferLength: req.file.buffer?.length,
-        });
-
-        // Validate file buffer exists
-        if (!req.file.buffer || req.file.buffer.length === 0) {
-          throw new Error("File buffer is empty");
-        }
-
-        const imageUrl = await uploadFile(req.file, "requirements/");
-        postData.image = imageUrl;
+        // For direct S3 upload, the file key is available in req.file.key
+        postData.image = req.file.key; // This is the S3 object key
       } catch (uploadErr) {
         console.error("S3 Upload Failed:", uploadErr);
         return res.status(500).json({

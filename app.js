@@ -3,7 +3,6 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const morgan = require("morgan");
-const fileupload = require("express-fileupload");
 const path = require("path");
 const AWS = require("aws-sdk");
 

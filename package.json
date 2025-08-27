@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.876.0",
     "aws-sdk": "^2.1692.0",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
@@ -26,6 +27,7 @@
     "mongoose-paginate-v2": "^1.9.1",
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
+    "multer-s3-v3": "^33.0.12",
     "nodemailer": "^7.0.5",
     "pug": "^3.0.3"
   },

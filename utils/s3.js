@@ -9,30 +9,45 @@ AWS.config.update({
 
 const s3 = new AWS.S3();
 
-// Updated upload function to handle buffer
+// Updated upload function to handle multer-s3 file objects
 exports.uploadFile = async (file, folder = "") => {
-  if (!file || !file.buffer) {
+  if (!file || !file.key) {
     throw new Error("Invalid file object");
   }
 
+  // If the file is already in the desired folder, return the key as-is
+  if (file.key.startsWith(folder)) {
+    return file.key;
+  }
+
+  // If you want to organize files in folders, copy to the new location
   const fileExt = file.originalname.split(".").pop();
-  const uniqueKey = `${folder}${Date.now()}_${Math.random()
+  const newKey = `${folder}${Date.now()}_${Math.random()
     .toString(36)
     .substring(2)}.${fileExt}`;
 
-  const uploadParams = {
-    Bucket: process.env.AWS_BUCKET_NAME,
-    Body: file.buffer,
-    Key: uniqueKey,
-    ContentType: file.mimetype,
-    ACL: "private",
-  };
-
   try {
-    const data = await s3.upload(uploadParams).promise();
-    return data.Key;
+    // Copy the file to the desired folder
+    await s3
+      .copyObject({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        CopySource: `${process.env.AWS_BUCKET_NAME}/${file.key}`,
+        Key: newKey,
+        ACL: "private",
+      })
+      .promise();
+
+    // Delete the original file
+    await s3
+      .deleteObject({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: file.key,
+      })
+      .promise();
+
+    return newKey;
   } catch (err) {
-    throw new Error(`S3 upload failed: ${err.message}`);
+    throw new Error(`S3 file organization failed: ${err.message}`);
   }
 };
 

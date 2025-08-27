@@ -1,5 +1,5 @@
 const express = require("express");
-const upload = require("../middleware/multer");
+const { upload } = require("../middleware/multer"); // Import the specific upload function
 const {
   createPostRequirement,
   getPostRequirements,
@@ -13,13 +13,13 @@ const {
   optionalAuth,
   checkStudentRole,
 } = require("../middleware/auth");
-
+const { uploadRequirementImage } = require("../middleware/multer");
 const router = express.Router();
 
 // 📌 Add (POST)
 router.post(
   "/",
-  upload.single("image"),
+  uploadRequirementImage.single("image"), // Use direct S3 upload
   optionalAuth,
   checkStudentRole,
   createPostRequirement

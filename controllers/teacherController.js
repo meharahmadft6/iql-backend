@@ -7,21 +7,18 @@ const Email = require("../utils/sendEmail");
 
 // Helper function to populate teacher with signed URLs
 const populateWithSignedUrls = async (teacher) => {
-  if (!teacher) return teacher;
+  const teacherObj = teacher.toObject();
 
-  const teacherObj = teacher.toObject ? teacher.toObject() : teacher;
+  if (teacherObj.profilePhoto) {
+    teacherObj.profilePhotoUrl = await getSignedUrl(teacherObj.profilePhoto);
+  }
 
-  // Get signed URLs for photos
-  teacherObj.profilePhotoUrl = await getSignedUrl(teacher.profilePhoto);
-  teacherObj.idProofUrl = await getSignedUrl(teacher.idProofFile);
-
-  // Remove S3 keys from response
-  delete teacherObj.profilePhoto;
-  delete teacherObj.idProofFile;
+  if (teacherObj.idProofFile) {
+    teacherObj.idProofUrl = await getSignedUrl(teacherObj.idProofFile);
+  }
 
   return teacherObj;
 };
-
 // @desc    Get all teachers (admin only)
 // @route   GET /api/v1/teachers
 // @access  Private/Admin
@@ -58,9 +55,6 @@ exports.getTeachers = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc    Get single teacher
-// @route   GET /api/v1/teachers/:id
-// @access  Public
 exports.getTeacher = asyncHandler(async (req, res, next) => {
   const teacher = await Teacher.findById(req.params.id).populate({
     path: "user",
@@ -97,7 +91,6 @@ exports.getTeacher = asyncHandler(async (req, res, next) => {
 // @access  Private (Teacher only)
 exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
   // Check if user is a teacher
-
   if (req.user.role !== "teacher") {
     return next(
       new ErrorResponse(
@@ -121,10 +114,29 @@ exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
   // Add user to req.body
   req.body.user = req.user.id;
 
+  // Debug logging for file objects
+
   // Validate required files
-  if (!req.files?.profilePhoto || !req.files?.idProofFile) {
+  if (!req.files?.profilePhoto?.[0] || !req.files?.idProofFile?.[0]) {
     return next(
       new ErrorResponse("Please upload both profile photo and ID proof", 400)
+    );
+  }
+
+  // Extract files from arrays
+  const profilePhotoFile = req.files.profilePhoto[0];
+  const idProofFile = req.files.idProofFile[0];
+
+  // FIXED: Remove buffer validation since multer-s3 doesn't use buffers
+  // Instead, validate file existence and basic properties
+  if (
+    !profilePhotoFile ||
+    !idProofFile ||
+    !profilePhotoFile.originalname ||
+    !idProofFile.originalname
+  ) {
+    return next(
+      new ErrorResponse("Invalid file format. Please upload valid files.", 400)
     );
   }
 
@@ -162,10 +174,10 @@ exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
       req.body.onlineTeachingExperience
     );
 
-    // Upload files to S3
+    // Upload files to S3 - Pass the correct file objects
     const [profilePhotoKey, idProofKey] = await Promise.all([
-      uploadFile(req.files.profilePhoto, "profile-photos/"),
-      uploadFile(req.files.idProofFile, "id-proofs/"),
+      uploadFile(profilePhotoFile, "profile-photos/"),
+      uploadFile(idProofFile, "id-proofs/"),
     ]);
 
     // Add file keys to request body
@@ -210,7 +222,6 @@ exports.createTeacherProfile = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/v1/teachers/:id
 // @access  Private (Teacher owner or admin)
 exports.updateTeacherProfile = asyncHandler(async (req, res, next) => {
-  // console.log("Update request body:", req.body);
   let teacher = await Teacher.findById(req.params.id);
 
   if (!teacher) {
@@ -343,14 +354,22 @@ exports.updateTeacherProfile = asyncHandler(async (req, res, next) => {
       );
 
     // Handle profile photo upload (NOT CNIC/ID proof)
-    if (req.files?.profilePhoto) {
+    if (req.file) {
+      // Delete old profile photo if it exists
       if (teacher.profilePhoto) {
-        await deleteFile(teacher.profilePhoto);
+        try {
+          await deleteFile(teacher.profilePhoto);
+        } catch (deleteError) {
+          console.error("Error deleting old profile photo:", deleteError);
+          // Continue with update even if deletion fails
+        }
       }
-      req.body.profilePhoto = await uploadFile(
-        req.files.profilePhoto,
-        "profile-photos/"
-      );
+
+      // Update the profilePhoto field with the new file path
+      req.body.profilePhoto = req.file.key;
+    } else if (req.body.keepExistingProfilePhoto === "true") {
+      // Keep existing photo - remove the field from update to prevent overwriting
+      delete req.body.profilePhoto;
     }
 
     // If admin is approving, just update isApproved
