@@ -90,14 +90,14 @@ exports.login = asyncHandler(async (req, res, next) => {
   }
 
   // Check if user is verified
-  if (!user.isVerified) {
-    return next(
-      new ErrorResponse(
-        "Please verify your email before logging in. Check your email for verification link.",
-        401
-      )
-    );
-  }
+  // if (!user.isVerified) {
+  //   return next(
+  //     new ErrorResponse(
+  //       "Please verify your email before logging in. Check your email for verification link.",
+  //       401
+  //     )
+  //   );
+  // }
 
   let profileExists = false;
   if (user.role === "teacher") {

@@ -1,8 +1,7 @@
 // controllers/postRequirements.js
 const PostRequirement = require("../models/PostRequirement");
 const User = require("../models/User");
-const Email = require("../utils/sendEmail");
-const { uploadFile } = require("../utils/s3");
+const { getSignedUrl } = require("../utils/s3");
 // @desc    Create a new tutor request (with auto user creation if needed)
 // @route   POST /api/post-requirements
 // @access  Public (for unauthenticated users) / Private (for authenticated)
@@ -246,8 +245,6 @@ exports.getPostRequirements = async (req, res, next) => {
 
     // Fields to exclude
     const removeFields = ["select", "sort", "page", "limit"];
-
-    // Loop over removeFields and delete them from reqQuery
     removeFields.forEach((param) => delete reqQuery[param]);
 
     // Create query string
@@ -259,10 +256,11 @@ exports.getPostRequirements = async (req, res, next) => {
       (match) => `$${match}`
     );
 
-    // Finding resource
+    // ✅ Always filter posts by verified student users
     query = PostRequirement.find(JSON.parse(queryStr)).populate({
       path: "user",
-      select: "name email",
+      select: "name email role isVerified",
+      match: { role: "student", isVerified: true }, // only verified students
     });
 
     // Select Fields
@@ -284,42 +282,45 @@ exports.getPostRequirements = async (req, res, next) => {
     const limit = parseInt(req.query.limit, 10) || 25;
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
-    const total = await PostRequirement.countDocuments(JSON.parse(queryStr));
+
+    const total = await PostRequirement.countDocuments({
+      ...JSON.parse(queryStr),
+    });
 
     query = query.skip(startIndex).limit(limit);
 
-    // Executing query
-    const postRequirements = await query;
+    // Execute query
+    let postRequirements = await query;
+
+    // ❌ Remove posts where populate didn't match
+    postRequirements = postRequirements.filter((post) => post.user);
+
+    // Add signed URL to each post
+    const postsWithUrls = await Promise.all(
+      postRequirements.map(async (post) => {
+        const obj = post.toObject();
+        obj.isVerified = true;
+        if (obj.image) {
+          obj.imageUrl = await getSignedUrl(obj.image);
+        }
+        return obj;
+      })
+    );
 
     // Pagination result
     const pagination = {};
-
-    if (endIndex < total) {
-      pagination.next = {
-        page: page + 1,
-        limit,
-      };
-    }
-
-    if (startIndex > 0) {
-      pagination.prev = {
-        page: page - 1,
-        limit,
-      };
-    }
+    if (endIndex < total) pagination.next = { page: page + 1, limit };
+    if (startIndex > 0) pagination.prev = { page: page - 1, limit };
 
     res.status(200).json({
       success: true,
-      count: postRequirements.length,
+      count: postsWithUrls.length,
       pagination,
-      data: postRequirements,
+      data: postsWithUrls,
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
@@ -328,11 +329,11 @@ exports.getPostRequirements = async (req, res, next) => {
 // @access  Public
 exports.getPostRequirement = async (req, res, next) => {
   try {
-    const postRequirement = await PostRequirement.findById(
+    let postRequirement = await PostRequirement.findById(
       req.params.id
     ).populate({
       path: "user",
-      select: "name email",
+      select: "name email role isVerified",
     });
 
     if (!postRequirement) {
@@ -342,19 +343,56 @@ exports.getPostRequirement = async (req, res, next) => {
       });
     }
 
+    postRequirement = postRequirement.toObject();
+
+    if (postRequirement.image) {
+      postRequirement.imageUrl = await getSignedUrl(postRequirement.image);
+    }
+
     res.status(200).json({
       success: true,
       data: postRequirement,
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
+// @desc    Get logged in user’s post requirements
+// @route   GET /api/post-requirements/my-posts
+// @access  Private
+exports.getMyPostRequirements = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    let posts = await PostRequirement.find({ user: userId })
+      .populate({
+        path: "user",
+        select: "name email role isVerified",
+      })
+      .sort({ createdAt: -1 });
+
+    const postsWithUrls = await Promise.all(
+      posts.map(async (post) => {
+        const obj = post.toObject();
+        if (obj.image) {
+          obj.imageUrl = await getSignedUrl(obj.image);
+        }
+        return obj;
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      count: postsWithUrls.length,
+      data: postsWithUrls,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
 // @desc    Update post requirement
 // @route   PUT /api/post-requirements/:id
 // @access  Private

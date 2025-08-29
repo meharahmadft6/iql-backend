@@ -6,6 +6,7 @@ const {
   getPostRequirement,
   updatePostRequirement,
   deletePostRequirement,
+  getMyPostRequirements,
 } = require("../controllers/postRequirementsController");
 
 const {
@@ -26,6 +27,10 @@ router.post(
 );
 
 // 📌 Get All (GET)
+// 📌 Get User’s Posts (protected)
+router.get("/my-posts", protect, getMyPostRequirements);
+
+// 📌 Get All (only verified student posts)
 router.get("/", getPostRequirements);
 
 // 📌 Get Single (GET)
