@@ -2,12 +2,18 @@
 const PostRequirement = require("../models/PostRequirement");
 const User = require("../models/User");
 const { getSignedUrl } = require("../utils/s3");
+const Email = require("../utils/sendEmail");
 // @desc    Create a new tutor request (with auto user creation if needed)
 // @route   POST /api/post-requirements
 // @access  Public (for unauthenticated users) / Private (for authenticated)
 exports.createPostRequirement = async (req, res, next) => {
   try {
     let user;
+    let newUserCreated = false;
+    let token;
+    console.log("Request Body:", req.body);
+    console.log("Request File:", req.file);
+    console.log("Request User:", req.user);
 
     // Validate request body exists
     if (!req.body || Object.keys(req.body).length === 0) {
@@ -70,6 +76,28 @@ exports.createPostRequirement = async (req, res, next) => {
         location,
         role: "student",
       });
+
+      // Generate verification token and save user
+      const verificationToken = user.getVerificationToken();
+      await user.save({ validateBeforeSave: false });
+      token = user.getSignedJwtToken();
+      // Send verification email for new users
+      try {
+        const frontendUrl =
+          process.env.NODE_ENV === "production"
+            ? process.env.HOST
+            : process.env.FRONTEND_URL;
+
+        const verificationUrl = `${frontendUrl}/verify-email/${verificationToken}`;
+        const emailService = new Email(user, null, null, verificationUrl);
+        await emailService.sendVerificationEmail();
+        console.log("Verification email sent to:", user.email);
+      } catch (emailError) {
+        console.error("Email sending error:", emailError);
+        // Continue even if email fails to send
+      }
+
+      newUserCreated = true;
     }
 
     // ✅ Required fields validation (for both logged in and new users)
@@ -194,13 +222,46 @@ exports.createPostRequirement = async (req, res, next) => {
     // ✅ Save Post Requirement
     const postRequirement = await PostRequirement.create(postData);
 
-    res.status(201).json({
-      success: true,
-      data: postRequirement,
-      message: req.user
-        ? "Post requirement created successfully."
-        : "Account created and post requirement submitted successfully. Please check your email to verify your account.",
-    });
+    if (newUserCreated) {
+      // For new users, return token and user data like login
+      const responseData = {
+        success: true,
+        token,
+        role: user.role,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          isVerified: user.isVerified,
+        },
+        postRequirement: {
+          _id: postRequirement._id,
+          description: postRequirement.description,
+          subjects: postRequirement.subjects,
+          serviceType: postRequirement.serviceType,
+          meetingOptions: postRequirement.meetingOptions,
+          budget: postRequirement.budget,
+          employmentType: postRequirement.employmentType,
+          languages: postRequirement.languages,
+          phone: postRequirement.phone,
+          location: postRequirement.location,
+          isVerified: postRequirement.isVerified,
+          createdAt: postRequirement.createdAt,
+        },
+        message:
+          "Account created and post requirement submitted successfully. Please check your email to verify your account.",
+      };
+
+      return res.status(201).json(responseData);
+    } else {
+      // For existing users, return the original response
+      return res.status(201).json({
+        success: true,
+        data: postRequirement,
+        message: "Post requirement created successfully.",
+      });
+    }
   } catch (err) {
     console.error("Error creating post requirement:", err);
 
