@@ -11,10 +11,7 @@ exports.createPostRequirement = async (req, res, next) => {
     let user;
     let newUserCreated = false;
     let token;
-    console.log("Request Body:", req.body);
-    console.log("Request File:", req.file);
-    console.log("Request User:", req.user);
-
+    console.log(req.body);
     // Validate request body exists
     if (!req.body || Object.keys(req.body).length === 0) {
       return res.status(400).json({
@@ -294,31 +291,30 @@ exports.createPostRequirement = async (req, res, next) => {
     });
   }
 };
-// @desc    Get all post requirements
-// @route   GET /api/post-requirements
-// @access  Public
+
 exports.getPostRequirements = async (req, res, next) => {
   try {
-    let query;
-
     // Copy req.query
     const reqQuery = { ...req.query };
 
-    // Fields to exclude
+    // Fields to exclude from filters
     const removeFields = ["select", "sort", "page", "limit"];
     removeFields.forEach((param) => delete reqQuery[param]);
 
-    // Create query string
+    // Convert query operators ($gt, $in, etc.)
     let queryStr = JSON.stringify(reqQuery);
-
-    // Create operators ($gt, $gte, etc)
     queryStr = queryStr.replace(
       /\b(gt|gte|lt|lte|in)\b/g,
       (match) => `$${match}`
     );
 
-    // ✅ Always filter posts by verified student users
-    query = PostRequirement.find(JSON.parse(queryStr)).populate({
+    // Pagination setup
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 15;
+    const startIndex = (page - 1) * limit;
+
+    // Base query with population
+    let query = PostRequirement.find(JSON.parse(queryStr)).populate({
       path: "user",
       select: "name email role isVerified",
       match: { role: "student", isVerified: true }, // only verified students
@@ -338,29 +334,34 @@ exports.getPostRequirements = async (req, res, next) => {
       query = query.sort("-createdAt");
     }
 
-    // Pagination
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 25;
-    const startIndex = (page - 1) * limit;
-    const endIndex = page * limit;
-
-    const total = await PostRequirement.countDocuments({
-      ...JSON.parse(queryStr),
-    });
-
+    // ✅ Apply pagination
     query = query.skip(startIndex).limit(limit);
 
-    // Execute query
+    // Run query
     let postRequirements = await query;
 
     // ❌ Remove posts where populate didn't match
     postRequirements = postRequirements.filter((post) => post.user);
 
-    // Add signed URL to each post
+    // ✅ Auto-verify posts from verified users
+    const postsToUpdate = postRequirements.filter(
+      (post) => post.user.isVerified && !post.isVerified
+    );
+
+    if (postsToUpdate.length > 0) {
+      const postIds = postsToUpdate.map((post) => post._id);
+      await PostRequirement.updateMany(
+        { _id: { $in: postIds } },
+        { $set: { isVerified: true } }
+      );
+    }
+
+    // Add signed URL + sync isVerified with user
     const postsWithUrls = await Promise.all(
       postRequirements.map(async (post) => {
         const obj = post.toObject();
-        obj.isVerified = true;
+        obj.isVerified = post.user.isVerified;
+
         if (obj.image) {
           obj.imageUrl = await getSignedUrl(obj.image);
         }
@@ -368,17 +369,28 @@ exports.getPostRequirements = async (req, res, next) => {
       })
     );
 
-    // Pagination result
+    // ✅ Get total count of verified student posts (without pagination)
+    const allPosts = await PostRequirement.find(JSON.parse(queryStr)).populate({
+      path: "user",
+      match: { role: "student", isVerified: true },
+    });
+    const total = allPosts.filter((post) => post.user).length;
+
+    // Pagination info
     const pagination = {};
-    if (endIndex < total) pagination.next = { page: page + 1, limit };
-    if (startIndex > 0) pagination.prev = { page: page - 1, limit };
+    const totalPages = Math.ceil(total / limit);
+    if (page < totalPages) pagination.next = { page: page + 1, limit };
+    if (page > 1) pagination.prev = { page: page - 1, limit };
 
     res.status(200).json({
       success: true,
       count: postsWithUrls.length,
+      total,
+      totalPages,
       pagination,
       data: postsWithUrls,
     });
+    console.log(totalPages);
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -454,11 +466,345 @@ exports.getMyPostRequirements = async (req, res, next) => {
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+exports.getOnlineTeachingJobs = async (req, res, next) => {
+  try {
+    // Copy req.query
+    const reqQuery = { ...req.query };
+
+    // Fields to exclude from filters
+    const removeFields = ["select", "sort", "page", "limit"];
+    removeFields.forEach((param) => delete reqQuery[param]);
+
+    // Add filter for online meeting options
+    reqQuery.meetingOptions = { $in: ["Online"] };
+
+    // Convert query operators ($gt, $in, etc.)
+    // Convert operators except $in
+    let queryStr = JSON.stringify(reqQuery);
+    queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, (match) =>
+      match === "in" ? match : `$${match}`
+    );
+
+    let filters = JSON.parse(queryStr);
+
+    // Add meeting option filter separately
+    filters.meetingOptions = { $in: ["Online"] };
+
+    let query = PostRequirement.find(filters).populate({
+      path: "user",
+      select: "name email role isVerified",
+      match: { role: "student", isVerified: true },
+    });
+
+    // Pagination setup
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 15;
+    const startIndex = (page - 1) * limit;
+
+    // Select Fields
+    if (req.query.select) {
+      const fields = req.query.select.split(",").join(" ");
+      query = query.select(fields);
+    }
+
+    // Sort
+    if (req.query.sort) {
+      const sortBy = req.query.sort.split(",").join(" ");
+      query = query.sort(sortBy);
+    } else {
+      query = query.sort("-createdAt");
+    }
+
+    // ✅ Apply pagination
+    query = query.skip(startIndex).limit(limit);
+
+    // Run query
+    let onlineTeachingJobs = await query;
+
+    // ❌ Remove posts where populate didn't match
+    onlineTeachingJobs = onlineTeachingJobs.filter((post) => post.user);
+
+    // ✅ Auto-verify posts from verified users
+    const postsToUpdate = onlineTeachingJobs.filter(
+      (post) => post.user.isVerified && !post.isVerified
+    );
+
+    if (postsToUpdate.length > 0) {
+      const postIds = postsToUpdate.map((post) => post._id);
+      await PostRequirement.updateMany(
+        { _id: { $in: postIds } },
+        { $set: { isVerified: true } }
+      );
+    }
+
+    // Add signed URL + sync isVerified with user
+    const postsWithUrls = await Promise.all(
+      onlineTeachingJobs.map(async (post) => {
+        const obj = post.toObject();
+        obj.isVerified = post.user.isVerified;
+
+        if (obj.image) {
+          obj.imageUrl = await getSignedUrl(obj.image);
+        }
+        return obj;
+      })
+    );
+
+    // ✅ Get total count of verified student posts with online meeting option
+    const allPosts = await PostRequirement.find({
+      ...JSON.parse(queryStr),
+      meetingOptions: { $in: ["Online"] },
+    }).populate({
+      path: "user",
+      match: { role: "student", isVerified: true },
+    });
+    const total = allPosts.filter((post) => post.user).length;
+
+    // Pagination info
+    const pagination = {};
+    const totalPages = Math.ceil(total / limit);
+    if (page < totalPages) pagination.next = { page: page + 1, limit };
+    if (page > 1) pagination.prev = { page: page - 1, limit };
+
+    res.status(200).json({
+      success: true,
+      count: postsWithUrls.length,
+      total,
+      totalPages,
+      pagination,
+      data: postsWithUrls,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+exports.getHomeTeachingJobs = async (req, res, next) => {
+  try {
+    // Copy req.query
+    const reqQuery = { ...req.query };
+
+    // Fields to exclude from filters
+    const removeFields = ["select", "sort", "page", "limit"];
+    removeFields.forEach((param) => delete reqQuery[param]);
+
+    // Add filter for "At my place" meeting options
+    reqQuery.meetingOptions = "At my place";
+
+    // Convert query operators ($gt, $in, etc.)
+    let queryStr = JSON.stringify(reqQuery);
+    queryStr = queryStr.replace(
+      /\b(gt|gte|lt|lte|in)\b/g,
+      (match) => `$${match}`
+    );
+
+    // Pagination setup
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 15;
+    const startIndex = (page - 1) * limit;
+
+    // Base query with population
+    let query = PostRequirement.find(JSON.parse(queryStr)).populate({
+      path: "user",
+      select: "name email role isVerified",
+      match: { role: "student", isVerified: true }, // only verified students
+    });
+
+    // Select Fields
+    if (req.query.select) {
+      const fields = req.query.select.split(",").join(" ");
+      query = query.select(fields);
+    }
+
+    // Sort
+    if (req.query.sort) {
+      const sortBy = req.query.sort.split(",").join(" ");
+      query = query.sort(sortBy);
+    } else {
+      query = query.sort("-createdAt");
+    }
+
+    // ✅ Apply pagination
+    query = query.skip(startIndex).limit(limit);
+
+    // Run query
+    let homeTeachingJobs = await query;
+
+    // ❌ Remove posts where populate didn't match
+    homeTeachingJobs = homeTeachingJobs.filter((post) => post.user);
+
+    // ✅ Auto-verify posts from verified users
+    const postsToUpdate = homeTeachingJobs.filter(
+      (post) => post.user.isVerified && !post.isVerified
+    );
+
+    if (postsToUpdate.length > 0) {
+      const postIds = postsToUpdate.map((post) => post._id);
+      await PostRequirement.updateMany(
+        { _id: { $in: postIds } },
+        { $set: { isVerified: true } }
+      );
+    }
+
+    // Add signed URL + sync isVerified with user
+    const postsWithUrls = await Promise.all(
+      homeTeachingJobs.map(async (post) => {
+        const obj = post.toObject();
+        obj.isVerified = post.user.isVerified;
+
+        if (obj.image) {
+          obj.imageUrl = await getSignedUrl(obj.image);
+        }
+        return obj;
+      })
+    );
+
+    // ✅ Get total count of verified student posts with "At my place" meeting option
+    const allPosts = await PostRequirement.find({
+      ...JSON.parse(queryStr),
+      meetingOptions: "At my place",
+    }).populate({
+      path: "user",
+      match: { role: "student", isVerified: true },
+    });
+    const total = allPosts.filter((post) => post.user).length;
+
+    // Pagination info
+    const pagination = {};
+    const totalPages = Math.ceil(total / limit);
+    if (page < totalPages) pagination.next = { page: page + 1, limit };
+    if (page > 1) pagination.prev = { page: page - 1, limit };
+
+    res.status(200).json({
+      success: true,
+      count: postsWithUrls.length,
+      total,
+      totalPages,
+      pagination,
+      data: postsWithUrls,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+exports.getAssignmentHelpPosts = async (req, res, next) => {
+  try {
+    // Copy req.query
+    const reqQuery = { ...req.query };
+
+    // Fields to exclude from filters
+    const removeFields = ["select", "sort", "page", "limit"];
+    removeFields.forEach((param) => delete reqQuery[param]);
+
+    // Add filter for Assignment Help service type
+    reqQuery.serviceType = "Assignment Help";
+
+    // Convert query operators ($gt, $in, etc.)
+    let queryStr = JSON.stringify(reqQuery);
+    queryStr = queryStr.replace(
+      /\b(gt|gte|lt|lte|in)\b/g,
+      (match) => `$${match}`
+    );
+
+    // Pagination setup
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 15;
+    const startIndex = (page - 1) * limit;
+
+    // Base query with population
+    let query = PostRequirement.find(JSON.parse(queryStr)).populate({
+      path: "user",
+      select: "name email role isVerified",
+      match: { role: "student", isVerified: true }, // only verified students
+    });
+
+    // Select Fields
+    if (req.query.select) {
+      const fields = req.query.select.split(",").join(" ");
+      query = query.select(fields);
+    }
+
+    // Sort
+    if (req.query.sort) {
+      const sortBy = req.query.sort.split(",").join(" ");
+      query = query.sort(sortBy);
+    } else {
+      query = query.sort("-createdAt");
+    }
+
+    // ✅ Apply pagination
+    query = query.skip(startIndex).limit(limit);
+
+    // Run query
+    let assignmentHelpPosts = await query;
+
+    // ❌ Remove posts where populate didn't match
+    assignmentHelpPosts = assignmentHelpPosts.filter((post) => post.user);
+
+    // ✅ Auto-verify posts from verified users
+    const postsToUpdate = assignmentHelpPosts.filter(
+      (post) => post.user.isVerified && !post.isVerified
+    );
+
+    if (postsToUpdate.length > 0) {
+      const postIds = postsToUpdate.map((post) => post._id);
+      await PostRequirement.updateMany(
+        { _id: { $in: postIds } },
+        { $set: { isVerified: true } }
+      );
+    }
+
+    // Add signed URL + sync isVerified with user
+    const postsWithUrls = await Promise.all(
+      assignmentHelpPosts.map(async (post) => {
+        const obj = post.toObject();
+        obj.isVerified = post.user.isVerified;
+
+        if (obj.image) {
+          obj.imageUrl = await getSignedUrl(obj.image);
+        }
+        return obj;
+      })
+    );
+
+    // ✅ Get total count of verified student posts with Assignment Help service type
+    const allPosts = await PostRequirement.find({
+      ...JSON.parse(queryStr),
+      serviceType: "Assignment Help",
+    }).populate({
+      path: "user",
+      match: { role: "student", isVerified: true },
+    });
+    const total = allPosts.filter((post) => post.user).length;
+
+    // Pagination info
+    const pagination = {};
+    const totalPages = Math.ceil(total / limit);
+    if (page < totalPages) pagination.next = { page: page + 1, limit };
+    if (page > 1) pagination.prev = { page: page - 1, limit };
+
+    res.status(200).json({
+      success: true,
+      count: postsWithUrls.length,
+      total,
+      totalPages,
+      pagination,
+      data: postsWithUrls,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
 // @desc    Update post requirement
 // @route   PUT /api/post-requirements/:id
 // @access  Private
+
 exports.updatePostRequirement = async (req, res, next) => {
   try {
+    console.log("Update Request Body:", req.body);
     let postRequirement = await PostRequirement.findById(req.params.id);
 
     if (!postRequirement) {

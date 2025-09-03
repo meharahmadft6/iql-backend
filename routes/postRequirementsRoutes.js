@@ -7,6 +7,9 @@ const {
   updatePostRequirement,
   deletePostRequirement,
   getMyPostRequirements,
+  getOnlineTeachingJobs,
+  getHomeTeachingJobs,
+  getAssignmentHelpPosts,
 } = require("../controllers/postRequirementsController");
 
 const {
@@ -29,6 +32,9 @@ router.post(
 // 📌 Get All (GET)
 // 📌 Get User’s Posts (protected)
 router.get("/my-posts", protect, getMyPostRequirements);
+router.get("/online-teaching-jobs", getOnlineTeachingJobs);
+router.get("/home-teaching-jobs", getHomeTeachingJobs);
+router.get("/assignment-help", getAssignmentHelpPosts);
 
 // 📌 Get All (only verified student posts)
 router.get("/", getPostRequirements);

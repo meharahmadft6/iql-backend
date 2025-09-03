@@ -27,6 +27,8 @@ const SubjectSchema = new mongoose.Schema({
       "Grade 10",
       "Grade 11",
       "Grade 12",
+      "A-level",
+      "O-level",
       "Diploma",
       "Bachelor's",
       "Master's",
