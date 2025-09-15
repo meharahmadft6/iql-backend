@@ -10,6 +10,9 @@ const auth = require("./routes/authRoutes");
 const teachers = require("./routes/teacherRoutes");
 const reviews = require("./routes/reviews");
 const postRequirements = require("./routes/postRequirementsRoutes");
+const subjectRoutes = require("./routes/subjectRoutes.js");
+const studentRoutes = require("./routes/students.js");
+const teacherApplications = require("./routes/teacherApplications");
 
 const app = express();
 
@@ -25,6 +28,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:3001",
+      "http://localhost:3000",
       "https://infinityquotientlearning.vercel.app",
       "https://infinityquotientlearning.com",
       "https://www.infinityquotientlearning.com",
@@ -101,7 +105,10 @@ app.use("/api/auth", auth);
 app.use("/api/teachers", teachers);
 app.use("/api/reviews", reviews);
 app.use("/api/post-requirement", postRequirements);
-
+app.use("/api/subjects", subjectRoutes);
+// Mount student routes
+app.use("/api/students", studentRoutes);
+app.use("/api/applications", teacherApplications);
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);

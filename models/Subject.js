@@ -1,15 +1,56 @@
-// models/PostRequirement.js
 const mongoose = require("mongoose");
 
-const SubjectSchema = new mongoose.Schema({
+const subjectSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
     trim: true,
   },
+  category: {
+    type: String,
+    enum: [
+      // Education levels
+      "School",
+      "College",
+      "University",
+
+      // Skills & Professions
+      "Skill",
+      "Language",
+      "Languages",
+      "Vocational",
+      "Professional",
+      "Exam Preparation",
+      "Hobby",
+      "Sports",
+
+      // Academic streams
+      "Science",
+      "Sciences", // added
+      "Mathematics",
+      "Science & Technology",
+      "Technology",
+      "Engineering",
+      "Health",
+      "Social Sciences",
+      "Humanities",
+      "Humanities & Social Sciences", // added
+
+      // Arts
+      "Arts",
+      "Creative Arts",
+      "Creative & Vocational", // added
+
+      // Business
+      "Business",
+      "Business & Economics", // added
+
+      // Misc
+      "Other",
+    ],
+  },
   level: {
     type: String,
-    required: true,
     enum: [
       // General proficiency levels
       "Beginner",
@@ -88,76 +129,7 @@ const SubjectSchema = new mongoose.Schema({
       "Thesis",
       "Other",
     ],
-  },
-});
-
-const BudgetSchema = new mongoose.Schema({
-  currency: {
-    type: String,
-    required: true,
-    default: "PKR",
-  },
-  amount: {
-    type: Number,
-    required: true,
-  },
-  frequency: {
-    type: String,
-    required: true,
-    enum: ["Per Hour", "Per Day", "Per Week", "Per Month", "Per Year", "Fixed"],
-  },
-});
-
-const PostRequirementSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.ObjectId,
-    ref: "User",
-    required: true,
-  },
-  description: {
-    type: String,
-    required: true,
-  },
-  subjects: [SubjectSchema],
-  serviceType: {
-    type: String,
-    required: true,
-    enum: ["Tutoring", "Assignment Help"],
-  },
-  meetingOptions: [
-    {
-      type: String,
-      enum: ["Online", "At my place", "Travel to tutor"],
-      required: true,
-    },
-  ],
-  budget: BudgetSchema,
-  employmentType: {
-    type: String,
-    enum: ["Part-time", "Full-time"],
-    required: true,
-  },
-  languages: [
-    {
-      type: String,
-      required: true,
-    },
-  ],
-  image: {
-    type: String, // S3 URL
-    default: null,
-  },
-  phone: {
-    countryCode: { type: String, default: "+92" },
-    number: { type: String },
-  },
-  location: {
-    type: String,
-    required: true,
-  },
-  isVerified: {
-    type: Boolean,
-    default: false,
+    default: "Other",
   },
   createdAt: {
     type: Date,
@@ -165,4 +137,6 @@ const PostRequirementSchema = new mongoose.Schema({
   },
 });
 
-module.exports = mongoose.model("PostRequirement", PostRequirementSchema);
+subjectSchema.index({ name: 1, category: 1, level: 1 }, { unique: true });
+
+module.exports = mongoose.model("Subject", subjectSchema);

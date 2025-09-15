@@ -4,7 +4,7 @@ const ErrorResponse = require("../utils/errorResponse");
 const asyncHandler = require("../middleware/async");
 const { uploadFile, getSignedUrl, deleteFile } = require("../utils/s3");
 const Email = require("../utils/sendEmail");
-
+const Wallet = require("../models/Wallet");
 // Helper function to populate teacher with signed URLs
 const populateWithSignedUrls = async (teacher) => {
   const teacherObj = teacher.toObject();
@@ -67,22 +67,18 @@ exports.getTeacher = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Only show profile if approved or if the request is from the owner or admin
-  // if (
-  //   !teacher.isApproved &&
-  //   (!req.user ||
-  //     (req.user.role !== "admin" && teacher.user.toString() !== req.user.id))
-  // ) {
-  //   return next(
-  //     new ErrorResponse(`This teacher profile is not approved yet`, 403)
-  //   );
-  // }
+  // ✅ Fetch wallet balance for this teacher's user
+  const wallet = await Wallet.findOne({ user: teacher.user._id });
+  const balance = wallet ? wallet.balance : 0;
 
   const teacherWithUrls = await populateWithSignedUrls(teacher);
-  // console.log(teacherWithUrls);
+
   res.status(200).json({
     success: true,
-    data: teacherWithUrls,
+    data: {
+      ...teacherWithUrls.toObject(),
+      walletBalance: balance, // ✅ Added wallet balance
+    },
   });
 });
 
@@ -465,6 +461,8 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
       )
     );
   }
+  const wallet = await Wallet.findOne({ user: teacher.user._id });
+  const balance = wallet ? wallet.balance : 0;
 
   // Get signed URLs for the response
   const teacherWithUrls = await populateWithSignedUrls(teacher);
@@ -472,6 +470,7 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     success: true,
     data: teacherWithUrls,
+    walletBalance: balance,
   });
 });
 exports.getAllTeacherProfiles = asyncHandler(async (req, res, next) => {
@@ -733,67 +732,78 @@ exports.getTeachersBySubjectAndLocation = asyncHandler(
   async (req, res, next) => {
     const { subject, location } = req.query;
 
-    let query = { isApproved: true };
-
-    // Build conditions array
+    let baseQuery = { isApproved: true };
     let conditions = [];
 
     if (subject) {
       conditions.push({
         subjects: {
-          $elemMatch: {
-            name: { $regex: subject, $options: "i" }, // partial + case-insensitive
-          },
+          $elemMatch: { name: { $regex: subject, $options: "i" } },
         },
       });
     }
 
     if (location) {
-      // allow partial match e.g. "Lahore" will still match
+      const locationKeyword = location.split(",")[0].trim(); // e.g. "Lahore"
       conditions.push({
-        location: { $regex: location.split(",")[0].trim(), $options: "i" },
+        location: { $regex: locationKeyword, $options: "i" },
       });
     }
 
+    // Apply filters
     if (conditions.length > 0) {
-      query.$or = conditions;
+      baseQuery.$or = conditions;
     }
 
-    let teachers = await Teacher.find(query)
-      .populate({
-        path: "user",
-        select: "name email role createdAt",
-      })
+    let teachers = await Teacher.find(baseQuery)
+      .populate({ path: "user", select: "name email role createdAt" })
       .populate("subjects")
       .populate("education")
       .populate("experience");
 
+    // If no teachers found, suggest relative results instead of error
     if (!teachers || teachers.length === 0) {
-      return next(
-        new ErrorResponse(
-          "No teachers found for the given subject and location",
-          404
-        )
-      );
+      let fallbackQuery = { isApproved: true };
+
+      if (subject) {
+        fallbackQuery["subjects"] = {
+          $elemMatch: {
+            name: { $regex: subject.split(" ")[0], $options: "i" },
+          },
+        };
+      } else if (location) {
+        fallbackQuery["location"] = {
+          $regex: location.split(" ")[0], // broader location search
+          $options: "i",
+        };
+      }
+
+      teachers = await Teacher.find(fallbackQuery)
+        .populate({ path: "user", select: "name email role createdAt" })
+        .populate("subjects")
+        .populate("education")
+        .populate("experience");
     }
 
-    // Rank results: both subject + location match → first
+    // Rank results if both subject + location are present
     if (subject && location) {
       teachers = teachers.sort((a, b) => {
-        const aSubject = a.subjects.some((s) =>
-          new RegExp(subject, "i").test(s.name)
-        );
-        const aLocation = new RegExp(location, "i").test(a.location);
-        const bSubject = b.subjects.some((s) =>
-          new RegExp(subject, "i").test(s.name)
-        );
-        const bLocation = new RegExp(location, "i").test(b.location);
+        const subjectRegex = new RegExp(subject, "i");
+        const locationRegex = new RegExp(location, "i");
 
-        return bSubject + bLocation - (aSubject + aLocation);
+        const aScore =
+          (a.subjects.some((s) => subjectRegex.test(s.name)) ? 1 : 0) +
+          (locationRegex.test(a.location) ? 1 : 0);
+
+        const bScore =
+          (b.subjects.some((s) => subjectRegex.test(s.name)) ? 1 : 0) +
+          (locationRegex.test(b.location) ? 1 : 0);
+
+        return bScore - aScore;
       });
     }
 
-    // Add signed URLs
+    // Add signed URLs for images/files
     const teachersWithUrls = await Promise.all(
       teachers.map(async (teacher) => {
         const teacherObj = teacher.toObject();
@@ -810,12 +820,15 @@ exports.getTeachersBySubjectAndLocation = asyncHandler(
         return teacherObj;
       })
     );
-    // console.log(teachersWithUrls);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: teachersWithUrls.length,
       data: teachersWithUrls,
+      message:
+        teachersWithUrls.length > 0
+          ? "Teachers fetched successfully"
+          : "No exact matches found, showing relative suggestions",
     });
   }
 );
