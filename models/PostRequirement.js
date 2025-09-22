@@ -9,7 +9,6 @@ const SubjectSchema = new mongoose.Schema({
   },
   level: {
     type: String,
-    required: true,
     enum: [
       // General proficiency levels
       "Beginner",
@@ -88,6 +87,7 @@ const SubjectSchema = new mongoose.Schema({
       "Thesis",
       "Other",
     ],
+    default: "Other",
   },
 });
 

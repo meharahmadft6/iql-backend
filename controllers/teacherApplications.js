@@ -224,23 +224,44 @@ exports.calculateApplicationCost = (postRequirement) => {
 
 // Helper function to check if teacher's level matches post requirement
 exports.checkLevelMatch = (teacherSubject, postLevel) => {
-  // This is a simplified implementation - you might want to expand this
-  // based on your specific level matching logic
-  const levelHierarchy = {
-    Beginner: 1,
-    Intermediate: 2,
-    Advanced: 3,
-    Expert: 4,
-    // Add more levels as needed
-  };
+  const levelOrder = [
+    "Kindergarten",
+    "Grade 1",
+    "Grade 2",
+    "Grade 3",
+    "Grade 4",
+    "Grade 5",
+    "Grade 6",
+    "Grade 7",
+    "Grade 8",
+    "Grade 9",
+    "Grade 10",
+    "Grade 11",
+    "Grade 12",
+    "Primary",
+    "Secondary",
+    "IGCSE",
+    "O-Level",
+    "AS-Level",
+    "A-Level",
+    "IB Middle Years",
+    "IB Diploma",
+    "Certificate",
+    "Diploma",
+    "Associate",
+    "Bachelor's",
+    "Master's",
+    "PhD",
+    "Postdoctoral",
+    "Other",
+  ];
 
-  // For now, assume teacher can teach the level if they have the same or higher level
-  return (
-    levelHierarchy[teacherSubject.toLevel] >= levelHierarchy[postLevel] ||
-    levelHierarchy[teacherSubject.fromLevel] <= levelHierarchy[postLevel]
-  );
+  const teacherFromIndex = levelOrder.indexOf(teacherSubject.fromLevel);
+  const teacherToIndex = levelOrder.indexOf(teacherSubject.toLevel);
+  const postLevelIndex = levelOrder.indexOf(postLevel);
+
+  return teacherFromIndex <= postLevelIndex && teacherToIndex >= postLevelIndex;
 };
-
 exports.checkApplicationStatus = asyncHandler(async (req, res) => {
   const { postId } = req.params;
   const teacherId = req.user.id;
@@ -272,3 +293,125 @@ exports.checkApplicationStatus = asyncHandler(async (req, res) => {
     data: application,
   });
 });
+
+exports.getTeacherApplications = async (req, res) => {
+  try {
+    const applications = await TeacherApplication.find()
+      .populate({
+        path: "teacher",
+        select:
+          "speciality currentRole gender location phoneNumber languages profilePhoto", // only required fields
+      })
+      .populate({
+        path: "postRequirement",
+        populate: { path: "user", select: "name email" }, // if you want post owner details
+      });
+
+    res.status(200).json({
+      success: true,
+      count: applications.length,
+      data: applications,
+    });
+  } catch (error) {
+    console.error("Error fetching applications:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};
+
+// Get applications by teacherId
+exports.getApplicationsByTeacher = async (req, res) => {
+  try {
+    const { teacherId } = req.params;
+
+    // Step 1: find teacher document by user id
+    const teacher = await Teacher.findOne({ user: teacherId });
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        message: "Teacher profile not found for this user",
+      });
+    }
+
+    // Step 2: use teacher._id to fetch applications
+    const applications = await TeacherApplication.find({ teacher: teacher._id })
+      .populate({
+        path: "teacher",
+        select:
+          "speciality currentRole gender location phoneNumber languages profilePhoto",
+      })
+      .populate({
+        path: "postRequirement",
+        populate: {
+          path: "user",
+          select: "name email phone",
+        },
+      })
+      .sort({ appliedAt: -1 }); // Sort by most recent first
+
+    // Step 3: Calculate statistics
+    const stats = {
+      total: applications.length,
+      pending: applications.filter((app) => app.status === "pending").length,
+      contacted: applications.filter((app) => app.status === "contacted")
+        .length,
+      accepted: applications.filter((app) => app.status === "accepted").length,
+      rejected: applications.filter((app) => app.status === "rejected").length,
+      totalCostSpent: applications.reduce(
+        (sum, app) => sum + (app.applicationCost || 0),
+        0
+      ),
+      thisMonth: applications.filter((app) => {
+        const appliedDate = new Date(app.appliedAt);
+        const currentDate = new Date();
+        return (
+          appliedDate.getMonth() === currentDate.getMonth() &&
+          appliedDate.getFullYear() === currentDate.getFullYear()
+        );
+      }).length,
+      thisWeek: applications.filter((app) => {
+        const appliedDate = new Date(app.appliedAt);
+        const currentDate = new Date();
+        const weekAgo = new Date(
+          currentDate.getTime() - 7 * 24 * 60 * 60 * 1000
+        );
+        return appliedDate >= weekAgo;
+      }).length,
+    };
+
+    // Step 4: Add contact information for contacted/accepted applications
+    const applicationsWithContact = applications.map((app) => {
+      const appObj = app.toObject();
+
+      // Add contact info if status allows it
+      if (app.status === "contacted" || app.status === "accepted") {
+        appObj.contactInfo = {
+          student: {
+            name: app.postRequirement.user.name,
+            email: app.postRequirement.user.email,
+            phone: app.postRequirement.phone || null,
+          },
+        };
+      }
+
+      return appObj;
+    });
+
+    res.status(200).json({
+      success: true,
+      count: applications.length,
+      stats: stats,
+      data: applicationsWithContact,
+    });
+  } catch (error) {
+    console.error("Error fetching teacher applications:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};

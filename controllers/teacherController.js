@@ -489,7 +489,7 @@ exports.getAllTeacherProfiles = asyncHandler(async (req, res, next) => {
   const teachersWithUrls = await Promise.all(
     teachers.map((teacher) => populateWithSignedUrls(teacher))
   );
-
+  console.log(teachersWithUrls);
   res.status(200).json({
     success: true,
     count: teachersWithUrls.length,
