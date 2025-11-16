@@ -83,3 +83,24 @@ exports.deleteFile = async (key) => {
     throw err;
   }
 };
+exports.uploadPDFBuffer = async (pdfBuffer, fileName, folder = "mcq-pdfs/") => {
+  const key = `${folder}${Date.now()}_${fileName.replace(
+    /[^a-zA-Z0-9]/g,
+    "_"
+  )}.pdf`;
+
+  const params = {
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: key,
+    Body: pdfBuffer,
+    ContentType: "application/pdf",
+    ACL: "private",
+  };
+
+  try {
+    const result = await s3.upload(params).promise();
+    return result.Key;
+  } catch (error) {
+    throw new Error(`S3 PDF upload failed: ${error.message}`);
+  }
+};

@@ -12,12 +12,70 @@ exports.createPostRequirement = async (req, res, next) => {
     let newUserCreated = false;
     let token;
     console.log(req.body);
+
     // Validate request body exists
     if (!req.body || Object.keys(req.body).length === 0) {
       return res.status(400).json({
         success: false,
         message: "Request body is empty or malformed",
       });
+    }
+
+    // Function to validate description for contact information
+    const validateDescriptionForContactInfo = (text) => {
+      if (!text) return [];
+
+      const contactPatterns = {
+        email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+        phone: /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4,}\b/g,
+        url: /https?:\/\/[^\s]+|www\.[^\s]+/gi,
+        socialMedia:
+          /(facebook\.com|twitter\.com|instagram\.com|linkedin\.com|tiktok\.com|snapchat\.com|telegram\.me|whatsapp\.com)[^\s]*/gi,
+        commonContactWords:
+          /\b(contact|call me|whatsapp|telegram|dm me|message me|reach me|get in touch|phone|mobile|number|email)\b/gi,
+      };
+
+      const detectedContactInfo = [];
+
+      for (const [type, pattern] of Object.entries(contactPatterns)) {
+        const matches = text.match(pattern);
+        if (matches && matches.length > 0) {
+          if (type === "phone") {
+            // Filter out false positives for phone numbers (like years, etc.)
+            const validPhones = matches.filter((phone) => {
+              // Remove common false positives
+              const cleanPhone = phone.replace(/[-.\s()]/g, "");
+              return (
+                cleanPhone.length >= 10 &&
+                !/^\d{4}$/.test(phone) && // Not a 4-digit year
+                !/^\d{1,3}$/.test(phone)
+              ); // Not a small number
+            });
+            if (validPhones.length > 0) {
+              detectedContactInfo.push(`${type}: ${validPhones.join(", ")}`);
+            }
+          } else {
+            detectedContactInfo.push(`${type}: ${matches.join(", ")}`);
+          }
+        }
+      }
+
+      return detectedContactInfo;
+    };
+
+    // Validate description for contact information
+    if (req.body.description) {
+      const contactInfoDetected = validateDescriptionForContactInfo(
+        req.body.description
+      );
+      if (contactInfoDetected.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Contact information is not allowed in description. Please remove: ${contactInfoDetected.join(
+            "; "
+          )}`,
+        });
+      }
     }
 
     if (req.user) {
@@ -825,9 +883,147 @@ exports.updatePostRequirement = async (req, res, next) => {
       });
     }
 
+    // Function to validate description for contact information
+    const validateDescriptionForContactInfo = (text) => {
+      if (!text) return [];
+
+      const contactPatterns = {
+        email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+        phone: /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4,}\b/g,
+        url: /https?:\/\/[^\s]+|www\.[^\s]+/gi,
+        socialMedia:
+          /(facebook\.com|twitter\.com|instagram\.com|linkedin\.com|tiktok\.com|snapchat\.com|telegram\.me|whatsapp\.com)[^\s]*/gi,
+        commonContactWords:
+          /\b(contact|call me|whatsapp|telegram|dm me|message me|reach me|get in touch|phone|mobile|number|email)\b/gi,
+      };
+
+      const detectedContactInfo = [];
+
+      for (const [type, pattern] of Object.entries(contactPatterns)) {
+        const matches = text.match(pattern);
+        if (matches && matches.length > 0) {
+          if (type === "phone") {
+            // Filter out false positives for phone numbers (like years, etc.)
+            const validPhones = matches.filter((phone) => {
+              // Remove common false positives
+              const cleanPhone = phone.replace(/[-.\s()]/g, "");
+              return (
+                cleanPhone.length >= 10 &&
+                !/^\d{4}$/.test(phone) && // Not a 4-digit year
+                !/^\d{1,3}$/.test(phone)
+              ); // Not a small number
+            });
+            if (validPhones.length > 0) {
+              detectedContactInfo.push(`${type}: ${validPhones.join(", ")}`);
+            }
+          } else {
+            detectedContactInfo.push(`${type}: ${matches.join(", ")}`);
+          }
+        }
+      }
+
+      return detectedContactInfo;
+    };
+
+    // Validate description for contact information if it's being updated
+    if (req.body.description) {
+      const contactInfoDetected = validateDescriptionForContactInfo(
+        req.body.description
+      );
+      if (contactInfoDetected.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Contact information is not allowed in description. Please remove: ${contactInfoDetected.join(
+            "; "
+          )}`,
+        });
+      }
+    }
+
+    // Also check if description is being updated via nested fields
+    if (req.body["description"]) {
+      const contactInfoDetected = validateDescriptionForContactInfo(
+        req.body["description"]
+      );
+      if (contactInfoDetected.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Contact information is not allowed in description. Please remove: ${contactInfoDetected.join(
+            "; "
+          )}`,
+        });
+      }
+    }
+
+    // Prepare update data
+    const updateData = { ...req.body };
+
+    // Handle nested budget fields if present
+    if (
+      req.body["budget.currency"] ||
+      req.body["budget.amount"] ||
+      req.body["budget.frequency"]
+    ) {
+      updateData.budget = {
+        currency:
+          req.body["budget.currency"] || postRequirement.budget.currency,
+        amount: req.body["budget.amount"]
+          ? parseFloat(req.body["budget.amount"])
+          : postRequirement.budget.amount,
+        frequency:
+          req.body["budget.frequency"] || postRequirement.budget.frequency,
+      };
+
+      // Remove the individual budget fields to avoid conflicts
+      delete updateData["budget.currency"];
+      delete updateData["budget.amount"];
+      delete updateData["budget.frequency"];
+    }
+
+    // Handle nested phone fields if present
+    if (req.body["phone.countryCode"] || req.body["phone.number"]) {
+      updateData.phone = {
+        countryCode:
+          req.body["phone.countryCode"] || postRequirement.phone.countryCode,
+        number: req.body["phone.number"] || postRequirement.phone.number,
+      };
+
+      // Remove the individual phone fields to avoid conflicts
+      delete updateData["phone.countryCode"];
+      delete updateData["phone.number"];
+    }
+
+    // Handle meetingOptions array
+    if (req.body.meetingOptions && Array.isArray(req.body.meetingOptions)) {
+      updateData.meetingOptions = req.body.meetingOptions;
+    }
+
+    // Handle languages array
+    if (req.body.languages && Array.isArray(req.body.languages)) {
+      updateData.languages = req.body.languages.map((lang) => lang.trim());
+    }
+
+    // Handle subjects array
+    if (req.body.subjects && Array.isArray(req.body.subjects)) {
+      const validSubjects = req.body.subjects.filter(
+        (subject) => subject.name && subject.name.trim() && subject.level
+      );
+
+      if (validSubjects.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide at least one subject with name and level",
+        });
+      }
+
+      updateData.subjects = validSubjects;
+    }
+
+    console.log("Final Update Data:", updateData);
+
     postRequirement = await PostRequirement.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updateData,
       {
         new: true,
         runValidators: true,
@@ -840,6 +1036,22 @@ exports.updatePostRequirement = async (req, res, next) => {
     });
   } catch (err) {
     console.error(err);
+
+    if (err.name === "ValidationError") {
+      const messages = Object.values(err.errors).map((error) => error.message);
+      return res.status(400).json({
+        success: false,
+        message: messages.join(". "),
+      });
+    }
+
+    if (err.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "A post requirement with this data already exists",
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Server Error",

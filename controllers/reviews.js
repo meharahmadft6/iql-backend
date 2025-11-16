@@ -1,20 +1,19 @@
-const ErrorResponse = require("../utils/errorResponse");
-const asyncHandler = require("../middleware/async");
+// controllers/reviewController.js
 const Review = require("../models/Review");
 const Teacher = require("../models/Teacher");
+const Contact = require("../models/Contact");
+const asyncHandler = require("../middleware/async");
 
-// @desc    Get reviews
+// @desc    Get reviews for a teacher or all reviews
 // @route   GET /api/v1/reviews
 // @route   GET /api/v1/teachers/:teacherId/reviews
 // @access  Public
-exports.getReviews = asyncHandler(async (req, res, next) => {
+exports.getTeacherReviews = asyncHandler(async (req, res) => {
   if (req.params.teacherId) {
-    const reviews = await Review.find({
-      teacher: req.params.teacherId,
-    }).populate({
-      path: "user",
-      select: "name email",
-    });
+    // Get reviews for specific teacher
+    const reviews = await Review.find({ teacher: req.params.teacherId })
+      .populate("user", "name")
+      .sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -22,6 +21,7 @@ exports.getReviews = asyncHandler(async (req, res, next) => {
       data: reviews,
     });
   } else {
+    // Get all reviews (handled by advancedResults middleware)
     res.status(200).json(res.advancedResults);
   }
 });
@@ -29,16 +29,16 @@ exports.getReviews = asyncHandler(async (req, res, next) => {
 // @desc    Get single review
 // @route   GET /api/v1/reviews/:id
 // @access  Public
-exports.getReview = asyncHandler(async (req, res, next) => {
-  const review = await Review.findById(req.params.id).populate({
-    path: "user",
-    select: "name email",
-  });
+exports.getReview = asyncHandler(async (req, res) => {
+  const review = await Review.findById(req.params.id)
+    .populate("user", "name")
+    .populate("teacher", "user speciality");
 
   if (!review) {
-    return next(
-      new ErrorResponse(`No review found with the id of ${req.params.id}`, 404)
-    );
+    return res.status(404).json({
+      success: false,
+      message: "Review not found",
+    });
   }
 
   res.status(200).json({
@@ -47,96 +47,137 @@ exports.getReview = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc    Add review
+// @desc    Create review
+// @route   POST /api/v1/reviews
 // @route   POST /api/v1/teachers/:teacherId/reviews
-// @access  Private
-exports.addReview = asyncHandler(async (req, res, next) => {
-  req.body.teacher = req.params.teacherId;
-  req.body.user = req.user.id;
+// @access  Private (Student, Admin)
+exports.createReview = asyncHandler(async (req, res) => {
+  const teacherId = req.params.teacherId || req.body.teacher;
+  const studentId = req.user.id;
+  const { title, text, rating } = req.body;
 
-  const teacher = await Teacher.findById(req.params.teacherId);
-
-  if (!teacher) {
-    return next(
-      new ErrorResponse(
-        `No teacher with the id of ${req.params.teacherId}`,
-        404
-      )
-    );
+  if (!teacherId) {
+    return res.status(400).json({
+      success: false,
+      message: "Please provide a teacher ID",
+    });
   }
 
-  // Check if user has already reviewed the teacher
+  // ✅ Check if teacher exists
+  const teacher = await Teacher.findById(teacherId);
+  if (!teacher) {
+    return res.status(404).json({
+      success: false,
+      message: "Teacher not found",
+    });
+  }
+
+  // ✅ Check if student has contacted this teacher
+  const contact = await Contact.findOne({
+    student: studentId,
+    teacher: teacherId,
+    status: "contacted",
+  });
+
+  if (!contact && req.user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "You can only review teachers you have contacted",
+    });
+  }
+
+  // ✅ Check if review already exists
   const existingReview = await Review.findOne({
-    user: req.user.id,
-    teacher: req.params.teacherId,
+    teacher: teacherId,
+    user: studentId,
   });
 
   if (existingReview) {
-    return next(
-      new ErrorResponse(
-        `User ${req.user.id} has already reviewed teacher ${req.params.teacherId}`,
-        400
-      )
-    );
+    return res.status(400).json({
+      success: false,
+      message: "You have already reviewed this teacher",
+    });
   }
 
-  const review = await Review.create(req.body);
+  // ✅ Create review
+  const review = await Review.create({
+    title,
+    text,
+    rating,
+    teacher: teacherId,
+    user: studentId,
+  });
+
+  // Populate the created review
+  await review.populate("user", "name");
+  await review.populate("teacher", "user speciality");
 
   res.status(201).json({
     success: true,
     data: review,
+    message: "Review submitted successfully",
   });
 });
 
 // @desc    Update review
 // @route   PUT /api/v1/reviews/:id
-// @access  Private
-exports.updateReview = asyncHandler(async (req, res, next) => {
+// @access  Private (Student, Admin)
+exports.updateReview = asyncHandler(async (req, res) => {
   let review = await Review.findById(req.params.id);
 
   if (!review) {
-    return next(
-      new ErrorResponse(`No review with the id of ${req.params.id}`, 404)
-    );
+    return res.status(404).json({
+      success: false,
+      message: "Review not found",
+    });
   }
 
-  // Make sure review belongs to user or user is admin
+  // Make sure user is review owner or admin
   if (review.user.toString() !== req.user.id && req.user.role !== "admin") {
-    return next(new ErrorResponse(`Not authorized to update review`, 401));
+    return res.status(403).json({
+      success: false,
+      message: "Not authorized to update this review",
+    });
   }
 
   review = await Review.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
     runValidators: true,
-  });
+  }).populate("user", "name");
 
   res.status(200).json({
     success: true,
     data: review,
+    message: "Review updated successfully",
   });
 });
 
 // @desc    Delete review
 // @route   DELETE /api/v1/reviews/:id
-// @access  Private
-exports.deleteReview = asyncHandler(async (req, res, next) => {
+// @access  Private (Student, Admin)
+exports.deleteReview = asyncHandler(async (req, res) => {
   const review = await Review.findById(req.params.id);
 
   if (!review) {
-    return next(
-      new ErrorResponse(`No review with the id of ${req.params.id}`, 404)
-    );
+    return res.status(404).json({
+      success: false,
+      message: "Review not found",
+    });
   }
 
-  // Make sure review belongs to user or user is admin
+  // Make sure user is review owner or admin
   if (review.user.toString() !== req.user.id && req.user.role !== "admin") {
-    return next(new ErrorResponse(`Not authorized to delete review`, 401));
+    return res.status(403).json({
+      success: false,
+      message: "Not authorized to delete this review",
+    });
   }
 
-  await review.remove();
+  await review.deleteOne();
 
   res.status(200).json({
     success: true,
     data: {},
+    message: "Review deleted successfully",
   });
 });

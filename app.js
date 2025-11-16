@@ -13,7 +13,16 @@ const postRequirements = require("./routes/postRequirementsRoutes");
 const subjectRoutes = require("./routes/subjectRoutes.js");
 const studentRoutes = require("./routes/students.js");
 const teacherApplications = require("./routes/teacherApplications");
-
+const contact = require("./routes/contact.js");
+// In your main server file (app.js or server.js)
+const courseRoutes = require("./routes/courseRoutes");
+const subjectResourcesRoutes = require("./routes/subjectResourcesRoutes");
+// In your main server file (app.js or server.js)
+const uploadRoutes = require("./routes/upload");
+// In your main server file (app.js or server.js)
+const studyRoutes = require("./routes/studyRoutes");
+const courseAccess = require("./routes/courseAccessRoutes.js");
+const dashboard = require("./routes/dashboard.js");
 const app = express();
 
 // Configure AWS S3
@@ -109,6 +118,18 @@ app.use("/api/subjects", subjectRoutes);
 // Mount student routes
 app.use("/api/students", studentRoutes);
 app.use("/api/applications", teacherApplications);
+app.use("/api/payments", require("./routes/payments"));
+app.use("/api/wallet", require("./routes/wallet"));
+app.use("/api/contact", contact);
+
+app.use("/api/courses", courseRoutes);
+app.use("/api/subject-resources", subjectResourcesRoutes);
+app.use("/api/upload", uploadRoutes);
+app.use("/api/study", studyRoutes);
+app.use("/api/dashboard", dashboard);
+
+// In your main server file (app.js or server.js)
+app.use("/api/course-access", courseAccess);
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);

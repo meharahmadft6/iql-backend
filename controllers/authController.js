@@ -114,7 +114,7 @@ exports.logout = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     success: true,
     data: {},
-    });
+  });
 });
 
 // @desc    Get current logged in user
@@ -142,8 +142,6 @@ exports.getMe = asyncHandler(async (req, res, next) => {
         message: "User not found.",
       });
     }
-
-    // Send success response
     res.status(200).json({
       success: true,
       data: user,

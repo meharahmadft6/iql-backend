@@ -1,10 +1,11 @@
 // models/Wallet.js
 const mongoose = require("mongoose");
 
+// In models/Wallet.js, update TransactionSchema
 const TransactionSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ["credit", "debit"],
+    enum: ["credit", "debit", "purchase"], // Added purchase type
     required: true,
   },
   amount: {
@@ -21,14 +22,17 @@ const TransactionSchema = new mongoose.Schema({
   },
   transactionModel: {
     type: String,
-    enum: ["PostRequirement", "TeacherApplication"],
+    enum: ["PostRequirement", "TeacherApplication", "Payment", "Contact"], // Added Payment
+  },
+  payment: {
+    type: mongoose.Schema.ObjectId,
+    ref: "Payment",
   },
   createdAt: {
     type: Date,
     default: Date.now,
   },
 });
-
 const WalletSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.ObjectId,
